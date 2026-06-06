@@ -1,9 +1,10 @@
 """
-Build AI-Powered Medical Equipment Reliability Intelligence Assistant — Architecture PPT
+AI-Powered Medical Equipment Reliability Intelligence Assistant
+Clean, visual PowerPoint — Architecture & Data Flow
 """
 
 from pptx import Presentation
-from pptx.util import Inches, Pt
+from pptx.util import Inches, Pt, Emu
 from pptx.dml.color import RGBColor
 from pptx.enum.text import PP_ALIGN
 
@@ -11,740 +12,788 @@ prs = Presentation()
 prs.slide_width  = Inches(13.33)
 prs.slide_height = Inches(7.5)
 
-# ─── Color palette ─────────────────────────────────────────────────────────
-NAVY   = RGBColor(0x1e, 0x3a, 0x5f)
-BLUE   = RGBColor(0x25, 0x63, 0xeb)
-CYAN   = RGBColor(0x06, 0xb6, 0xd4)
-GREEN  = RGBColor(0x10, 0xb9, 0x81)
-AMBER  = RGBColor(0xf5, 0x9e, 0x0b)
-RED    = RGBColor(0xef, 0x44, 0x44)
-PURPLE = RGBColor(0x7c, 0x3a, 0xed)
-WHITE  = RGBColor(0xff, 0xff, 0xff)
-GRAY   = RGBColor(0x64, 0x74, 0x8b)
-LGRAY  = RGBColor(0xf1, 0xf5, 0xf9)
-DGRAY  = RGBColor(0x1e, 0x29, 0x3b)
+# ── Palette ────────────────────────────────────────────────────────────────
+NAVY    = RGBColor(0x0f, 0x28, 0x4a)
+BLUE    = RGBColor(0x1d, 0x6f, 0xd1)
+LTBLUE  = RGBColor(0xdb, 0xea, 0xfe)
+CYAN    = RGBColor(0x06, 0xb6, 0xd4)
+LTCYAN  = RGBColor(0xcf, 0xf0, 0xf7)
+GREEN   = RGBColor(0x05, 0x96, 0x69)
+LTGREEN = RGBColor(0xd1, 0xfa, 0xe5)
+AMBER   = RGBColor(0xd9, 0x77, 0x06)
+LTAMBER = RGBColor(0xfe, 0xf3, 0xc7)
+PURPLE  = RGBColor(0x6d, 0x28, 0xd9)
+LTPURP  = RGBColor(0xed, 0xe9, 0xfe)
+RED     = RGBColor(0xdc, 0x26, 0x26)
+LTRED   = RGBColor(0xfe, 0xe2, 0xe2)
+WHITE   = RGBColor(0xff, 0xff, 0xff)
+OFFWHT  = RGBColor(0xf8, 0xfa, 0xfc)
+LGRAY   = RGBColor(0xe2, 0xe8, 0xf0)
+MGRAY   = RGBColor(0x94, 0xa3, 0xb8)
+DGRAY   = RGBColor(0x1e, 0x29, 0x3b)
 
 
-# ─── Helpers ───────────────────────────────────────────────────────────────
-def blank_slide():
+# ── Primitive helpers ──────────────────────────────────────────────────────
+def slide():
     return prs.slides.add_slide(prs.slide_layouts[6])
 
-def bg(slide, color):
-    fill = slide.background.fill
-    fill.solid()
-    fill.fore_color.rgb = color
+def bg(sl, rgb):
+    f = sl.background.fill; f.solid(); f.fore_color.rgb = rgb
 
-def box(slide, x, y, w, h, fill_color, border_color=None):
-    shape = slide.shapes.add_shape(
-        1, Inches(x), Inches(y), Inches(w), Inches(h)
-    )
-    shape.fill.solid()
-    shape.fill.fore_color.rgb = fill_color
-    if border_color:
-        shape.line.color.rgb = border_color
-        shape.line.width = Pt(1.2)
-    else:
-        shape.line.fill.background()
-    return shape
+def rect(sl, x, y, w, h, fill, border=None, bw=1.0):
+    sh = sl.shapes.add_shape(1, Inches(x), Inches(y), Inches(w), Inches(h))
+    sh.fill.solid(); sh.fill.fore_color.rgb = fill
+    if border: sh.line.color.rgb = border; sh.line.width = Pt(bw)
+    else:       sh.line.fill.background()
+    return sh
 
-def txt(slide, text, x, y, w, h, size=11, bold=False, color=WHITE,
-        align=PP_ALIGN.LEFT, italic=False):
-    txb = slide.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
-    txb.word_wrap = True
-    tf = txb.text_frame
-    tf.word_wrap = True
-    p = tf.paragraphs[0]
-    p.alignment = align
-    run = p.add_run()
-    run.text = text
-    run.font.size = Pt(size)
-    run.font.bold = bold
-    run.font.italic = italic
-    run.font.color.rgb = color
+def label(sl, text, x, y, w, h, size=11, bold=False, color=DGRAY,
+          align=PP_ALIGN.LEFT, italic=False):
+    tb = sl.shapes.add_textbox(Inches(x), Inches(y), Inches(w), Inches(h))
+    tb.word_wrap = True
+    tf = tb.text_frame; tf.word_wrap = True
+    p  = tf.paragraphs[0]; p.alignment = align
+    r  = p.add_run(); r.text = text
+    r.font.size = Pt(size); r.font.bold = bold
+    r.font.italic = italic; r.font.color.rgb = color
 
-def connector(slide, x1, y1, x2, y2, color=GRAY, width=1.5):
-    c = slide.shapes.add_connector(1, Inches(x1), Inches(y1), Inches(x2), Inches(y2))
-    c.line.color.rgb = color
-    c.line.width = Pt(width)
+def card(sl, x, y, w, h, fill, border, title, title_color=None,
+         title_size=10.5, border_w=1.5):
+    rect(sl, x, y, w, h, fill, border, border_w)
+    tc = title_color or border
+    label(sl, title, x+0.14, y+0.1, w-0.28, 0.36,
+          size=title_size, bold=True, color=tc, align=PP_ALIGN.CENTER)
+
+def arrow(sl, x1, y1, x2, y2, color=MGRAY, w=1.8):
+    c = sl.shapes.add_connector(1, Inches(x1), Inches(y1),
+                                   Inches(x2), Inches(y2))
+    c.line.color.rgb = color; c.line.width = Pt(w)
+
+def hdr(sl, title, subtitle="", bg_color=NAVY, title_color=WHITE, sub_color=CYAN):
+    rect(sl, 0, 0, 13.33, 0.82, bg_color)
+    label(sl, title,    0.4, 0.07, 12.5, 0.46,
+          size=22, bold=True, color=title_color)
+    if subtitle:
+        label(sl, subtitle, 0.4, 0.5, 12.5, 0.3,
+              size=9.5, color=sub_color)
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# SLIDE 1 — Title
+# SLIDE 1 — TITLE
 # ══════════════════════════════════════════════════════════════════════════
-sl = blank_slide()
-bg(sl, NAVY)
-box(sl, 0, 0, 13.33, 0.08, CYAN)
+sl = slide(); bg(sl, NAVY)
+rect(sl, 0, 0, 13.33, 0.12, CYAN)
+rect(sl, 0, 7.38, 13.33, 0.12, CYAN)
 
-box(sl, 0.5, 0.9, 0.9, 0.9, CYAN)
-txt(sl, "⚕", 0.52, 0.92, 0.86, 0.86, size=30, bold=True, align=PP_ALIGN.CENTER)
+# logo block
+rect(sl, 0.55, 1.0, 1.1, 1.1, CYAN)
+label(sl, "⚕", 0.58, 1.04, 1.04, 1.02,
+      size=34, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 
-txt(sl, "AI-Powered Medical Equipment", 1.65, 0.88, 11, 0.6,
-    size=32, bold=True, color=WHITE)
-txt(sl, "Reliability Intelligence Assistant", 1.65, 1.46, 11, 0.6,
-    size=32, bold=True, color=CYAN)
-txt(sl, "Architecture, Data Flow & System Design", 1.65, 2.12, 10, 0.42,
-    size=15, color=RGBColor(0xb0, 0xca, 0xe8))
+label(sl, "AI-Powered Medical Equipment",
+      1.85, 0.95, 10.8, 0.65, size=34, bold=True, color=WHITE)
+label(sl, "Reliability Intelligence Assistant",
+      1.85, 1.58, 10.8, 0.65, size=34, bold=True, color=CYAN)
 
-box(sl, 0.5, 2.72, 12.3, 0.04, CYAN)
+label(sl, "Architecture · Data Flow · Multi-Agent System",
+      1.85, 2.28, 10.8, 0.45, size=14, color=MGRAY, italic=True)
 
+rect(sl, 0.55, 2.85, 12.2, 0.04, CYAN)
+
+# tech badge row
 badges = [
-    ("LangGraph Multi-Agent",        BLUE),
-    ("GPT-4o mini Guardrails",       PURPLE),
-    ("Hybrid RAG (FAISS + BM25)",    GREEN),
-    ("DeepEval + LLM-as-Judge",      AMBER),
-    ("UCI AI4I 2020 Dataset",        CYAN),
+    ("LangGraph Pipeline",      BLUE),
+    ("GPT-4o mini Guardrails",  PURPLE),
+    ("FAISS + BM25 Hybrid RAG", GREEN),
+    ("DeepEval Evaluation",     AMBER),
+    ("UCI AI4I 2020 Dataset",   CYAN),
 ]
-bx = 0.5
-for label, col in badges:
-    box(sl, bx, 2.92, 2.28, 0.38, col)
-    txt(sl, label, bx + 0.1, 2.96, 2.08, 0.3, size=9.5, bold=True, align=PP_ALIGN.CENTER)
-    bx += 2.46
+bx = 0.55
+for lbl, col in badges:
+    rect(sl, bx, 3.05, 2.34, 0.46, col)
+    label(sl, lbl, bx+0.1, 3.1, 2.14, 0.36,
+          size=10, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+    bx += 2.44
 
-txt(sl, "Capstone Project  •  Biomedical Engineering AI  •  React + FastAPI + LangGraph",
-    0.5, 6.85, 12.3, 0.38, size=9.5, color=RGBColor(0x7a, 0x9a, 0xbf),
-    align=PP_ALIGN.CENTER)
+# bottom credits
+label(sl, "FastAPI  ·  React 18  ·  Claude Sonnet 4.6  ·  Python 3.10",
+      0.55, 3.72, 12.2, 0.38, size=10, color=MGRAY, align=PP_ALIGN.CENTER)
+
+# key numbers
+stats = [("10,000", "Maintenance Records"), ("12", "API Endpoints"),
+         ("8", "LangGraph Nodes"),("4", "AI Agents"), ("6", "Frontend Views")]
+sx = 0.55
+for num, desc in stats:
+    rect(sl, sx, 4.25, 2.34, 1.1, RGBColor(0x1a,0x38,0x60))
+    label(sl, num,  sx+0.1, 4.34, 2.14, 0.52,
+          size=26, bold=True, color=CYAN, align=PP_ALIGN.CENTER)
+    label(sl, desc, sx+0.1, 4.84, 2.14, 0.38,
+          size=8.5, color=MGRAY, align=PP_ALIGN.CENTER)
+    sx += 2.44
+
+label(sl, "Capstone Project  —  Biomedical Engineering AI",
+      0.55, 6.9, 12.2, 0.38, size=10, color=MGRAY, align=PP_ALIGN.CENTER)
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# SLIDE 2 — System Architecture Overview
+# SLIDE 2 — WHAT DOES THE SYSTEM DO? (Problem → Solution → Impact)
 # ══════════════════════════════════════════════════════════════════════════
-sl = blank_slide()
-bg(sl, LGRAY)
-box(sl, 0, 0, 13.33, 0.65, NAVY)
-txt(sl, "System Architecture Overview", 0.35, 0.08, 9, 0.48, size=22, bold=True)
-txt(sl, "Three-tier architecture: React Frontend → FastAPI Backend → Data Layer",
-    0.35, 0.38, 10, 0.28, size=10, color=CYAN)
+sl = slide(); bg(sl, OFFWHT)
+hdr(sl, "What Does This System Do?",
+    "AI assistant that helps biomedical engineers diagnose, predict and plan medical equipment maintenance")
 
-# --- FRONTEND column ---
-box(sl, 0.2, 0.82, 3.6, 6.0, WHITE, BLUE)
-box(sl, 0.2, 0.82, 3.6, 0.46, BLUE)
-txt(sl, "FRONTEND  (React + Vite)", 0.35, 0.88, 3.3, 0.34, size=10, bold=True)
-
-views = [
-    ("📊 Dashboard",          "Stats, charts, failure rates, monthly trends"),
-    ("💬 AI Assistant",       "LangGraph chat + guardrail badges + logs"),
-    ("📋 Maintenance Records","Paginated, filterable incident table"),
-    ("🚨 Anomaly Detection",  "Temp / wear / RPM anomaly analysis"),
-    ("🔗 LangGraph Pipeline", "Topology diagram + guardrail tester"),
-    ("✅ Evaluation & Judge", "DeepEval metrics + LLM-as-judge scores"),
+cols = [
+    ("⚠", "THE PROBLEM", RED, LTRED, [
+        "Medical equipment failures put patients at risk",
+        "Manual maintenance is reactive, not predictive",
+        "Engineers lack fast access to historical failure data",
+        "No intelligent root-cause analysis at scale",
+        "Recommendations are slow and inconsistent",
+    ]),
+    ("🤖", "OUR SOLUTION", BLUE, LTBLUE, [
+        "AI chat interface for natural language queries",
+        "Hybrid RAG retrieves similar past incidents instantly",
+        "4 AI agents analyse, plan and recommend actions",
+        "GPT-4o mini validates every query and response",
+        "DeepEval scores recommendation quality automatically",
+    ]),
+    ("✅", "THE IMPACT", GREEN, LTGREEN, [
+        "Faster root-cause identification",
+        "Data-driven preventive maintenance plans",
+        "Reduced equipment downtime and repair costs",
+        "Clinically safe, guardrail-validated outputs",
+        "Works without API keys (rule-based fallback)",
+    ]),
 ]
-vy = 1.38
-for title, desc in views:
-    box(sl, 0.35, vy, 3.3, 0.72, LGRAY, RGBColor(0xd1, 0xd5, 0xdb))
-    txt(sl, title, 0.48, vy + 0.05, 3.0, 0.28, size=9, bold=True, color=NAVY)
-    txt(sl, desc,  0.48, vy + 0.34, 3.0, 0.3,  size=7.5, color=GRAY)
-    vy += 0.82
-
-txt(sl, "Axios  /  CORS", 3.83, 3.6, 0.85, 0.28, size=7.5, color=GRAY, align=PP_ALIGN.CENTER)
-txt(sl, "→", 3.83, 3.82, 0.85, 0.28, size=18, bold=True, color=BLUE, align=PP_ALIGN.CENTER)
-
-# --- BACKEND column ---
-box(sl, 4.05, 0.82, 5.2, 6.0, WHITE, NAVY)
-box(sl, 4.05, 0.82, 5.2, 0.46, NAVY)
-txt(sl, "BACKEND  (FastAPI + Python)", 4.2, 0.88, 4.9, 0.34, size=10, bold=True)
-
-endpoints = [
-    ("POST /api/query",               "Full LangGraph pipeline analysis",     BLUE),
-    ("GET  /api/equipment/stats",      "Dataset stats + chart data",           GREEN),
-    ("GET  /api/maintenance/incidents","Paginated incident records",           GREEN),
-    ("POST /api/analyze/anomaly",      "Anomaly detection engine",             AMBER),
-    ("POST /api/evaluate",             "DeepEval + LLM-as-judge",             PURPLE),
-    ("POST /api/guardrail/validate",   "Standalone guardrail test",            RED),
-    ("GET  /api/pipeline/schema",      "LangGraph topology JSON",              CYAN),
-]
-ey = 1.38
-for ep, desc, col in endpoints:
-    box(sl, 4.2, ey, 4.95, 0.72, LGRAY, col)
-    txt(sl, ep,   4.32, ey + 0.05, 4.7, 0.26, size=8, bold=True, color=col)
-    txt(sl, desc, 4.32, ey + 0.32, 4.7, 0.3,  size=7.5, color=GRAY)
-    ey += 0.82
-
-txt(sl, "→", 9.28, 3.82, 0.5, 0.28, size=18, bold=True, color=NAVY, align=PP_ALIGN.CENTER)
-
-# --- DATA column ---
-box(sl, 9.55, 0.82, 3.55, 6.0, WHITE, GREEN)
-box(sl, 9.55, 0.82, 3.55, 0.46, GREEN)
-txt(sl, "DATA LAYER", 9.7, 0.88, 3.25, 0.34, size=10, bold=True)
-
-dstores = [
-    ("🗄  ai4i2020.csv",     "UCI AI4I 2020 schema\n10,000 rows × 14 cols",          GREEN),
-    ("🔍  FAISS Index",      "IndexFlatIP · 10k × 384-dim\n15 MB on disk",            BLUE),
-    ("📝  BM25 Index",       "BM25Okapi keyword index\nAll 10k docs tokenised",        CYAN),
-    ("📦  Embeddings",       "all-MiniLM-L6-v2\n10k × 384 float32 .npy",             PURPLE),
-    ("⚙   LangGraph State", "MedEquipState TypedDict\n17 fields per pipeline run",    AMBER),
-    ("💊  Enriched CSV",     "medical_equipment_maintenance.csv\n32 columns total",    RED),
-]
-dy = 1.38
-for icon, desc, col in dstores:
-    box(sl, 9.7, dy, 3.25, 0.82, LGRAY, col)
-    txt(sl, icon, 9.82, dy + 0.06, 3.0, 0.28, size=9, bold=True, color=col)
-    txt(sl, desc, 9.82, dy + 0.36, 3.0, 0.38, size=7.5, color=GRAY)
-    dy += 0.92
+cx = 0.3
+for icon, title, col, lt, points in cols:
+    rect(sl, cx, 1.0, 4.18, 6.2, lt, col, 2)
+    rect(sl, cx, 1.0, 4.18, 0.68, col)
+    label(sl, icon+" "+title, cx+0.15, 1.06, 3.88, 0.52,
+          size=13, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+    py = 1.85
+    for pt in points:
+        rect(sl, cx+0.18, py, 3.82, 0.62, WHITE, col, 0.8)
+        label(sl, "• "+pt, cx+0.34, py+0.1, 3.5, 0.42, size=10, color=DGRAY)
+        py += 0.74
+    cx += 4.47
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# SLIDE 3 — LangGraph Pipeline Data Flow
+# SLIDE 3 — HIGH-LEVEL SYSTEM ARCHITECTURE
 # ══════════════════════════════════════════════════════════════════════════
-sl = blank_slide()
-bg(sl, LGRAY)
-box(sl, 0, 0, 13.33, 0.65, NAVY)
-txt(sl, "LangGraph Multi-Agent Pipeline — State Machine Data Flow", 0.35, 0.08, 11, 0.48, size=21, bold=True)
-txt(sl, "StateGraph · 8 nodes · Conditional routing (VALID/INVALID) · TypedDict state passed between all nodes",
-    0.35, 0.38, 12, 0.28, size=9.5, color=CYAN)
+sl = slide(); bg(sl, OFFWHT)
+hdr(sl, "System Architecture — Three-Tier Overview",
+    "User → React Frontend → FastAPI Backend → LangGraph Multi-Agent Pipeline → Data Layer")
 
-# START box
-box(sl, 0.15, 2.55, 0.55, 0.5, DGRAY)
-txt(sl, "START", 0.15, 2.62, 0.55, 0.36, size=7, bold=True, align=PP_ALIGN.CENTER)
+# Tier boxes
+tiers = [
+    ("👤  USER", 0.25, 1.05, 2.4, 5.9, RGBColor(0x64,0x74,0x8b), LGRAY, [
+        "Biomedical Engineer",
+        "Types natural language query",
+        "Views results in browser",
+    ]),
+    ("⚛  REACT FRONTEND", 2.95, 1.05, 3.1, 5.9, BLUE, LTBLUE, [
+        "Dashboard (charts & KPIs)",
+        "AI Assistant (chat interface)",
+        "Maintenance Records table",
+        "Anomaly Detection tool",
+        "LangGraph Pipeline view",
+        "Evaluation & Judge view",
+    ]),
+    ("⚡  FASTAPI BACKEND", 6.35, 1.05, 3.1, 5.9, NAVY, RGBColor(0xd0,0xd8,0xe8), [
+        "12 REST API endpoints",
+        "LangGraph pipeline runner",
+        "RAG retrieval system",
+        "4 AI analysis agents",
+        "Input + Output guardrails",
+        "DeepEval + LLM judge",
+    ]),
+    ("🗄  DATA LAYER", 9.75, 1.05, 3.3, 5.9, GREEN, LTGREEN, [
+        "ai4i2020.csv  (10k rows UCI)",
+        "medical_equipment_maint.csv",
+        "FAISS index  (15 MB)",
+        "BM25 index  (5.6 MB)",
+        "Embeddings  (10k × 384-dim)",
+        "LangGraph state (TypedDict)",
+    ]),
+]
 
-# Main flow nodes
+for title, x, y, w, h, col, lt, items in tiers:
+    rect(sl, x, y, w, h, lt, col, 2.5)
+    rect(sl, x, y, w, 0.62, col)
+    label(sl, title, x+0.12, y+0.1, w-0.24, 0.44,
+          size=11, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+    iy = y + 0.85
+    for item in items:
+        rect(sl, x+0.15, iy, w-0.3, 0.62, WHITE, col, 0.6)
+        label(sl, item, x+0.28, iy+0.1, w-0.56, 0.42, size=9.5, color=DGRAY)
+        iy += 0.72
+
+# Arrows between tiers
+arrow_data = [(2.65, 4.05, 2.95, 4.05), (6.05, 4.05, 6.35, 4.05),
+              (9.45, 4.05, 9.75, 4.05)]
+for x1, y1, x2, y2 in arrow_data:
+    arrow(sl, x1, y1, x2, y2, NAVY, 2.5)
+
+# Arrow labels
+label(sl, "Axios\nHTTP",   2.58, 3.52, 0.45, 0.42, size=7.5, color=MGRAY, align=PP_ALIGN.CENTER)
+label(sl, "REST\nAPI",     6.0,  3.52, 0.45, 0.42, size=7.5, color=MGRAY, align=PP_ALIGN.CENTER)
+label(sl, "Read/\nWrite",  9.38, 3.52, 0.45, 0.42, size=7.5, color=MGRAY, align=PP_ALIGN.CENTER)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# SLIDE 4 — LANGGRAPH PIPELINE (visual flow)
+# ══════════════════════════════════════════════════════════════════════════
+sl = slide(); bg(sl, OFFWHT)
+hdr(sl, "LangGraph Multi-Agent Pipeline — State Machine",
+    "8 nodes · Conditional routing (VALID → analysis path / INVALID → rejection) · Shared TypedDict state")
+
+# Node definitions  (label, x, y, w, h, fill, lt)
 nodes = [
-    ("Input\nGuardrail",         1.0,  2.38, 1.55, 0.85, AMBER),
-    ("RAG\nRetrieval",           2.9,  2.38, 1.55, 0.85, BLUE),
-    ("Retrieval\nAgent",         4.8,  2.38, 1.55, 0.85, GREEN),
-    ("Reliability\nAgent",       6.7,  2.38, 1.6,  0.85, GREEN),
-    ("Maintenance\nAgent",       8.65, 2.38, 1.6,  0.85, GREEN),
-    ("Recommendation\nAgent",   10.6, 2.38, 1.6,  0.85, GREEN),
-    ("Output\nGuardrail",       12.55,2.38, 0.65, 0.85, AMBER),
+    ("Input\nGuardrail",          1.0,  2.6,  1.7, 0.95, AMBER,  LTAMBER),
+    ("RAG\nRetrieval",            3.05, 2.6,  1.7, 0.95, BLUE,   LTBLUE),
+    ("Equipment\nRetrieval Agent",5.1,  2.6,  1.7, 0.95, GREEN,  LTGREEN),
+    ("Reliability\nAnalysis Agent",7.15, 2.6, 1.7, 0.95, GREEN,  LTGREEN),
+    ("Maintenance\nAgent",        9.2,  2.6,  1.7, 0.95, PURPLE, LTPURP),
+    ("Recommendation\nAgent",    11.25, 2.6,  1.7, 0.95, PURPLE, LTPURP),
 ]
-for label, x, y, w, h, fill in nodes:
-    box(sl, x, y, w, h, fill)
-    txt(sl, label, x + 0.08, y + 0.12, w - 0.16, h - 0.24,
-        size=8, bold=True, align=PP_ALIGN.CENTER)
+# Draw nodes
+for lbl, x, y, w, h, fill, lt in nodes:
+    rect(sl, x, y, w, h, lt, fill, 2)
+    label(sl, lbl, x+0.1, y+0.14, w-0.2, h-0.28,
+          size=9, bold=True, color=fill, align=PP_ALIGN.CENTER)
 
-# Arrows between nodes
-arrow_xs = [0.7, 2.55, 4.45, 6.35, 8.3, 10.25, 12.25]
-arrow_y  = 2.8
-for ax in arrow_xs:
-    connector(sl, ax, arrow_y, ax + 0.35, arrow_y, WHITE, 2)
+# Output guardrail (after last agent — on new row)
+rect(sl, 11.25, 4.1, 1.7, 0.95, LTAMBER, AMBER, 2)
+label(sl, "Output\nGuardrail", 11.35, 4.24, 1.5, 0.67, size=9, bold=True,
+      color=AMBER, align=PP_ALIGN.CENTER)
 
-# END box
-box(sl, 13.05, 2.55, 0.23, 0.5, DGRAY)
-txt(sl, "END", 13.05, 2.62, 0.23, 0.36, size=6, bold=True, align=PP_ALIGN.CENTER)
+# START
+rect(sl, 0.18, 2.78, 0.72, 0.6, NAVY)
+label(sl, "START", 0.18, 2.82, 0.72, 0.52, size=8, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 
-# Rejection branch
-box(sl, 1.0, 4.15, 1.55, 0.65, RED)
-txt(sl, "Rejection\nNode", 1.08, 4.2, 1.4, 0.56, size=8, bold=True, align=PP_ALIGN.CENTER)
-box(sl, 1.0, 5.05, 0.8, 0.45, DGRAY)
-txt(sl, "END", 1.0, 5.1, 0.8, 0.36, size=7, bold=True, align=PP_ALIGN.CENTER)
+# END (main path)
+rect(sl, 12.42, 4.28, 0.68, 0.6, NAVY)
+label(sl, "END", 12.42, 4.32, 0.68, 0.52, size=8, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 
-connector(sl, 1.77, 3.23, 1.77, 4.15, RED, 1.5)
-connector(sl, 1.77, 4.8,  1.4,  5.05, RED, 1.5)
-txt(sl, "INVALID", 0.82, 3.55, 0.92, 0.28, size=7.5, bold=True, color=RED, align=PP_ALIGN.CENTER)
-txt(sl, "VALID",   2.55, 2.5,  0.7,  0.24, size=7.5, bold=True, color=GREEN)
+# Main flow arrows (horizontal)
+main_arrows = [
+    (0.9, 3.07, 1.0, 3.07),    # start → guardrail
+    (2.7, 3.07, 3.05, 3.07),   # guardrail → RAG
+    (4.75,3.07, 5.1, 3.07),    # RAG → retrieval agent
+    (6.8, 3.07, 7.15, 3.07),   # → reliability
+    (8.85,3.07, 9.2, 3.07),    # → maintenance
+    (10.95,3.07,11.25,3.07),   # → recommendation
+]
+for x1,y1,x2,y2 in main_arrows:
+    arrow(sl, x1, y1, x2, y2, NAVY, 2)
 
-# Detail cards above nodes
+# Recommendation → output guardrail (down arrow)
+arrow(sl, 12.1, 3.07, 12.1, 4.1, NAVY, 2)
+label(sl, "↓", 12.02, 3.6, 0.3, 0.36, size=14, bold=True, color=NAVY, align=PP_ALIGN.CENTER)
+
+# Output guardrail → END
+arrow(sl, 12.42, 4.58, 12.76, 4.58, NAVY, 2)
+
+# VALID / INVALID labels
+label(sl, "✓ VALID", 2.72, 2.65, 0.95, 0.32, size=8.5, bold=True, color=GREEN)
+
+# Rejection branch (down from input guardrail)
+rect(sl, 1.0, 4.7, 1.7, 0.75, LTRED, RED, 2)
+label(sl, "🚫  Rejection\nNode", 1.08, 4.78, 1.54, 0.6, size=9, bold=True, color=RED, align=PP_ALIGN.CENTER)
+rect(sl, 1.0, 5.65, 0.72, 0.5, NAVY)
+label(sl, "END", 1.0, 5.7, 0.72, 0.4, size=8, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+
+arrow(sl, 1.85, 3.55, 1.85, 4.7, RED, 1.8)
+arrow(sl, 1.36, 5.45, 1.36, 5.65, RED, 1.8)
+label(sl, "✗ INVALID", 0.9, 4.05, 1.05, 0.32, size=8.5, bold=True, color=RED)
+
+# Node detail cards below main flow
 details = [
-    (1.0,  0.78, 1.55, "GPT-4o mini\nor rule-based\nValidates relevance,\nsafety, intent,\nurgency level",   AMBER),
-    (2.9,  0.78, 1.55, "FAISS + BM25\nα=0.6/0.4 fusion\nEmbedding rerank\nMetadata filter\nk×6 candidates", BLUE),
-    (4.8,  0.78, 1.55, "Claude Sonnet\nor rule-based\nEquipment focus\nQuery intent\nRelevant incidents",    GREEN),
-    (6.7,  0.78, 1.6,  "Claude Sonnet\nor rule-based\nFailure rate %\nReliability 0-100\nAnomaly detection", GREEN),
-    (8.65, 0.78, 1.6,  "Claude Sonnet\nor rule-based\nAction plan\nUrgency level\nPreventive steps",         GREEN),
-    (10.6, 0.78, 1.6,  "Claude Sonnet\nor rule-based\nFinal synthesis\nRisk + confidence\nFollow-up steps",  GREEN),
-    (12.55,0.78, 0.65, "GPT-4o mini\nor rule-based\nQuality 0-100\nSafety rating\nclinical check",           AMBER),
+    (1.0,  1.05, 1.7, "GPT-4o mini\nValidates relevance\nSafety check\nRefines query"),
+    (3.05, 1.05, 1.7, "FAISS + BM25\nHybrid search\nEmbedding rerank\nTop-k results"),
+    (5.1,  1.05, 1.7, "Claude / Rules\nEquip. focus\nQuery intent\nRelevant incidents"),
+    (7.15, 1.05, 1.7, "Claude / Rules\nFailure rate %\nReliability score\nAnomaly detection"),
+    (9.2,  1.05, 1.7, "Claude / Rules\nAction plan\nUrgency level\nPreventive steps"),
+    (11.25,1.05, 1.7, "Claude / Rules\nFinal synthesis\nRisk assessment\nConfidence 0-100"),
 ]
-for x, y, w, detail, col in details:
-    box(sl, x, y, w, 1.45, WHITE, col)
-    txt(sl, detail, x + 0.08, y + 0.08, w - 0.16, 1.3, size=7, color=DGRAY)
-    connector(sl, x + w/2, y + 1.45, x + w/2, 2.38, RGBColor(0xc0, 0xca, 0xd8), 1)
+for x, y, w, detail in details:
+    rect(sl, x, y, w, 1.42, WHITE, LGRAY, 0.8)
+    label(sl, detail, x+0.1, y+0.08, w-0.2, 1.26, size=7.5, color=DGRAY)
+    arrow(sl, x+w/2, y+1.42, x+w/2, 2.6, LGRAY, 1)
 
-# State schema strip
-box(sl, 0.15, 5.65, 13.05, 1.7, WHITE, NAVY)
-txt(sl, "MedEquipState TypedDict — 17 fields", 0.35, 5.72, 8, 0.32, size=9, bold=True, color=NAVY)
-fields = [
-    "query", "refined_query", "filters", "k", "alpha",
-    "input_guardrail_result", "is_valid (router)",
-    "retrieved_docs[ ]", "retrieval_result{ }",
-    "reliability_result{ }", "maintenance_result{ }",
-    "recommendation_result{ }", "output_guardrail_result",
-    "error", "analysis_mode", "execution_log[ ]", "node_timings{ }",
-]
-fx, fy = 0.3, 6.1
-for i, f in enumerate(fields):
-    col_idx = i % 6
-    row_idx = i // 6
-    fx2 = 0.3 + col_idx * 2.16
-    fy2 = 6.1 + row_idx * 0.46
-    box(sl, fx2, fy2, 2.08, 0.38, LGRAY, BLUE)
-    txt(sl, f, fx2 + 0.07, fy2 + 0.06, 1.94, 0.28, size=7, color=NAVY)
+# State strip
+rect(sl, 0.18, 6.52, 12.9, 0.82, NAVY)
+label(sl, "Shared State  (MedEquipState TypedDict)  — 17 fields passed between every node",
+      0.38, 6.57, 12.5, 0.32, size=9.5, bold=True, color=CYAN)
+state = "query  ·  refined_query  ·  filters  ·  k  ·  alpha  ·  input_guardrail_result  ·  is_valid  ·  retrieved_docs[ ]  ·  retrieval_result  ·  reliability_result  ·  maintenance_result  ·  recommendation_result  ·  output_guardrail_result  ·  error  ·  analysis_mode  ·  execution_log[ ]  ·  node_timings{ }"
+label(sl, state, 0.38, 6.88, 12.5, 0.38, size=7.5, color=LGRAY)
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# SLIDE 4 — RAG Architecture
+# SLIDE 5 — HOW RAG WORKS (step-by-step visual)
 # ══════════════════════════════════════════════════════════════════════════
-sl = blank_slide()
-bg(sl, LGRAY)
-box(sl, 0, 0, 13.33, 0.65, NAVY)
-txt(sl, "Hybrid RAG — Retrieval, Fusion & Embedding Reranking", 0.35, 0.08, 11, 0.48, size=21, bold=True)
-txt(sl, "Phase 1: FAISS vector search + BM25 keyword search  →  Phase 2: Score fusion (α=0.6/0.4)  →  Phase 3: Embedding rerank  →  Phase 4: Metadata filter",
-    0.35, 0.38, 12.6, 0.28, size=9, color=CYAN)
+sl = slide(); bg(sl, OFFWHT)
+hdr(sl, "Hybrid RAG — How Retrieval Works",
+    "4-phase pipeline: dual retrieval → score fusion → embedding reranking → metadata filtering")
 
-# Phase headers
-phases = [
-    ("PHASE 1\nVector + Keyword", 0.2,  0.78, 3.35, BLUE),
-    ("PHASE 2\nScore Fusion",     3.75, 0.78, 2.85, PURPLE),
-    ("PHASE 3\nEmbedding Rerank", 6.8,  0.78, 3.35, RGBColor(0x0d, 0x94, 0x88)),
-    ("PHASE 4\nFilter + Budget",  10.35,0.78, 2.75, GREEN),
+# Phase boxes (full height columns)
+ph = [
+    ("PHASE 1\nDual Retrieval",     0.2,  0.9, 3.2,  6.35, BLUE,   LTBLUE),
+    ("PHASE 2\nScore Fusion",       3.65, 0.9, 2.55, 6.35, PURPLE, LTPURP),
+    ("PHASE 3\nEmbedding Rerank",   6.45, 0.9, 3.2,  6.35, GREEN,  LTGREEN),
+    ("PHASE 4\nFilter & Output",    9.9,  0.9, 3.2,  6.35, AMBER,  LTAMBER),
 ]
-for label, x, y, w, col in phases:
-    box(sl, x, y, w, 6.5, WHITE, col)
-    box(sl, x, y, w, 0.58, col)
-    txt(sl, label, x + 0.12, y + 0.06, w - 0.24, 0.48, size=10, bold=True, align=PP_ALIGN.CENTER)
+for title, x, y, w, h, col, lt in ph:
+    rect(sl, x, y, w, h, lt, col, 2)
+    rect(sl, x, y, w, 0.66, col)
+    label(sl, title, x+0.1, y+0.08, w-0.2, 0.5,
+          size=11, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
 
-# Phase 1 content
-p1 = [
-    ("FAISS Vector Search", BLUE,
-     "Model: all-MiniLM-L6-v2\nDim: 384-dimensional\nIndex: IndexFlatIP\n(inner product = cosine\nafter L2 normalization)\nPool: top k×6 candidates\nScore: cosine similarity"),
-    ("BM25 Keyword Search", CYAN,
-     "Library: rank-bm25 0.2.2\nModel: BM25Okapi\nTokenize: query.lower().split()\nget_scores() across 10k docs\nPool: top k×6 candidates\nScore: BM25 relevance"),
+# Phase arrows between columns
+for ax in [3.4, 6.2, 9.65]:
+    label(sl, "→", ax, 3.52, 0.34, 0.44,
+          size=20, bold=True, color=NAVY, align=PP_ALIGN.CENTER)
+
+# Phase 1 content — two sub-boxes
+p1_items = [
+    ("🔍  FAISS Vector Search", BLUE, [
+        "Model: all-MiniLM-L6-v2",
+        "Dimensions: 384-dim",
+        "Index: IndexFlatIP",
+        "(cosine similarity after",
+        " L2 normalisation)",
+        "Pool: top k×6 results",
+    ]),
+    ("📝  BM25 Keyword Search", CYAN, [
+        "Library: rank-bm25",
+        "Model: BM25Okapi",
+        "Tokenise: lower().split()",
+        "Scores all 10,000 docs",
+        "Pool: top k×6 results",
+        "",
+    ]),
 ]
-py = 1.45
-for title, col, detail in p1:
-    box(sl, 0.35, py, 3.0, 2.55, LGRAY, col)
-    txt(sl, title, 0.48, py + 0.08, 2.75, 0.32, size=9, bold=True, color=col)
-    txt(sl, detail, 0.48, py + 0.44, 2.75, 2.05, size=8, color=DGRAY)
-    py += 2.72
+py = 1.72
+for ptitle, pcol, pitems in p1_items:
+    rect(sl, 0.38, py, 2.84, 2.62, WHITE, pcol, 1.2)
+    label(sl, ptitle, 0.5, py+0.1, 2.6, 0.36, size=9, bold=True, color=pcol)
+    iy = py + 0.52
+    for it in pitems:
+        label(sl, it, 0.52, iy, 2.6, 0.3, size=8, color=DGRAY)
+        iy += 0.33
+    py += 2.82
 
-# Phase 2 content
-box(sl, 3.9, 1.45, 2.55, 5.6, LGRAY, PURPLE)
-txt(sl, "Score Normalization", 4.02, 1.52, 2.32, 0.3, size=9, bold=True, color=PURPLE)
-txt(sl, "min-max normalize both\nvector and BM25 scores\nto [0, 1] range", 4.02, 1.86, 2.32, 0.6, size=8, color=DGRAY)
-txt(sl, "Fusion Formula", 4.02, 2.55, 2.32, 0.3, size=9, bold=True, color=PURPLE)
-box(sl, 4.02, 2.9, 2.32, 0.9, NAVY)
-txt(sl, "combined =\n  0.6 × v_score\n+ 0.4 × b_score",
-    4.12, 2.94, 2.12, 0.82, size=8.5, bold=True, color=CYAN)
-txt(sl, "Union of candidate sets\nfrom both retrievers\nSorted descending\nby combined score\nPool size: k × 6 docs",
-    4.02, 3.92, 2.32, 1.2, size=8, color=DGRAY)
+# Phase 2 content — fusion formula
+rect(sl, 3.82, 1.72, 2.2, 5.2, WHITE, PURPLE, 1.2)
+label(sl, "Normalise scores\nto [0.0 – 1.0] range",
+      3.95, 1.82, 1.94, 0.65, size=9, color=DGRAY)
+rect(sl, 3.95, 2.6, 1.94, 1.15, NAVY)
+label(sl, "combined =\n  0.6 × v_score\n+ 0.4 × b_score",
+      4.05, 2.68, 1.74, 1.0, size=9.5, bold=True, color=CYAN, align=PP_ALIGN.CENTER)
+items2 = ["α = 0.6 → vector",
+          "α = 0.4 → BM25",
+          "Union of both sets",
+          "Sort combined score",
+          "Keep top k×4 docs",
+          "for reranking phase"]
+iy = 3.88
+for it in items2:
+    label(sl, "• "+it, 3.95, iy, 1.94, 0.32, size=8.5, color=DGRAY)
+    iy += 0.36
 
 # Phase 3 content
-rerank_steps = [
-    "① Re-encode query\n   SentenceTransformer\n   → unit vector",
-    "② For each candidate\n   cosine_sim =\n   query_emb · doc_emb",
-    "③ Metadata bonus\n   +0.08 equip type match\n   +0.06 failure type\n   +0.04 hospital unit\n   +0.05 failure context",
-    "④ Recency bonus\n   tool_wear / 10000\n   (max 0.03)",
-    "⑤ Final score\n   0.65 × cosine_sim\n   + 0.25 × hybrid\n   + meta + recency",
-    "⑥ Sort → top k×4",
+rect(sl, 6.62, 1.72, 2.86, 5.2, WHITE, GREEN, 1.2)
+steps3 = [
+    ("①", "Re-encode query",   "SentenceTransformer\n→ unit vector"),
+    ("②", "Cosine similarity", "query_emb · doc_emb\nfor each candidate"),
+    ("③", "Metadata bonus",    "+0.08 equip type match\n+0.06 failure type\n+0.04 hospital unit"),
+    ("④", "Recency bonus",     "tool_wear ÷ 10000\n(max +0.03)"),
+    ("⑤", "Final score",       "0.65×cosine\n+0.25×hybrid\n+meta+recency"),
 ]
-ry = 1.45
-for step in rerank_steps:
-    box(sl, 6.95, ry, 3.05, 0.85, LGRAY, RGBColor(0x0d, 0x94, 0x88))
-    txt(sl, step, 7.07, ry + 0.07, 2.82, 0.74, size=7.5, color=DGRAY)
-    ry += 0.92
+sy = 1.86
+for num, stitle, sdesc in steps3:
+    label(sl, num, 6.72, sy, 0.3, 0.28, size=10, bold=True, color=GREEN)
+    label(sl, stitle, 7.05, sy, 2.3, 0.28, size=8.5, bold=True, color=GREEN)
+    label(sl, sdesc, 7.05, sy+0.3, 2.3, 0.55, size=8, color=DGRAY)
+    sy += 0.92
 
 # Phase 4 content
-filter_items = [
-    ("equipment_type",  "Exact match\n(case-insensitive)"),
-    ("hospital_unit",   "Exact match"),
-    ("severity",        "Low/Medium/High/Critical"),
-    ("failure_only",    "machine_failure == 1"),
-    ("Token Budget",    "max_tokens = 1200\nword_count × 0.75\nskip over-budget docs"),
-    ("Output",          "Top k docs with\nrelevance_score\ndocument_text\n+ all metadata"),
+rect(sl, 10.08, 1.72, 2.84, 5.2, WHITE, AMBER, 1.2)
+items4 = [
+    ("Filter by equipment_type",  "Exact match (case-insensitive)"),
+    ("Filter by hospital_unit",   "Exact match"),
+    ("Filter by severity",        "Low/Medium/High/Critical"),
+    ("failure_only flag",         "machine_failure == 1 only"),
+    ("Token budget",              "max 1200 tokens\n(word_count ÷ 0.75)"),
+    ("Return top k docs",         "With relevance_score\n& document_text"),
 ]
-fy = 1.45
-for fname, fdesc in filter_items:
-    box(sl, 10.5, fy, 2.45, 0.88, LGRAY, GREEN)
-    txt(sl, fname, 10.62, fy + 0.06, 2.22, 0.26, size=8.5, bold=True, color=GREEN)
-    txt(sl, fdesc, 10.62, fy + 0.34, 2.22, 0.5,  size=7.5, color=DGRAY)
-    fy += 0.96
-
-# Phase arrows
-for ax in [3.55, 6.6, 10.15]:
-    txt(sl, "→", ax + 0.02, 3.5, 0.26, 0.36, size=16, bold=True, color=NAVY, align=PP_ALIGN.CENTER)
-
-# Bottom stats bar
-box(sl, 0.2, 7.1, 12.9, 0.3, NAVY)
-txt(sl, "Dataset: 10,000 records  ·  Embedding: all-MiniLM-L6-v2 (384-dim)  ·  Cache: faiss_index.bin + bm25.pkl + embeddings.npy + documents.pkl  ·  Candidate pool k×6 → rerank → filter → top k",
-    0.4, 7.14, 12.5, 0.24, size=7.5, color=WHITE, align=PP_ALIGN.CENTER)
+iy = 1.86
+for fname, fdesc in items4:
+    rect(sl, 10.2, iy, 2.6, 0.75, OFFWHT, AMBER, 0.8)
+    label(sl, fname, 10.3, iy+0.04, 2.4, 0.28, size=8.5, bold=True, color=AMBER)
+    label(sl, fdesc, 10.3, iy+0.34, 2.4, 0.34, size=7.5, color=DGRAY)
+    iy += 0.84
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# SLIDE 5 — Multi-Agent System
+# SLIDE 6 — 4 AI AGENTS
 # ══════════════════════════════════════════════════════════════════════════
-sl = blank_slide()
-bg(sl, LGRAY)
-box(sl, 0, 0, 13.33, 0.65, NAVY)
-txt(sl, "Multi-Agent Equipment Intelligence System", 0.35, 0.08, 11, 0.48, size=22, bold=True)
-txt(sl, "4 AI Agents · Claude Sonnet 4.6 (with intelligent rule-based fallback) · Sequential execution via LangGraph",
-    0.35, 0.38, 12, 0.28, size=9.5, color=CYAN)
+sl = slide(); bg(sl, OFFWHT)
+hdr(sl, "Multi-Agent Intelligence System — 4 AI Agents",
+    "Sequential pipeline: each agent reads the previous agent's output from shared LangGraph state")
 
-agent_data = [
-    ("🔍", "Equipment\nRetrieval Agent", BLUE,
-     [("Input",   "Query + retrieved docs (up to 8)"),
-      ("Output",  "relevant_incidents[]\nquery_intent\nequipment_focus[]\nhospital_units_affected\ntime_period"),
-      ("Purpose", "Identifies which equipment types\nand hospital units are most\nrelevant. Filters noise from\nretrieved incident pool."),
-      ("Fallback","Keyword matching on equipment\nnames; pattern extraction for\nhospital units and failure types")]),
-    ("📈", "Reliability\nAnalysis Agent", GREEN,
-     [("Input",   "Query + docs + retrieval_result"),
-      ("Output",  "failure_rate (%)\nreliability_score (0–100)\nanomalies[]\nfailure_patterns[]\nseverity_breakdown{}"),
-      ("Purpose", "Computes statistical reliability\nmetrics: failure rate, mean tool\nwear, temperature anomaly\ndetection, severity distribution."),
-      ("Fallback","Threshold-based anomaly detection;\nstatistical aggregation from\nraw incident data fields")]),
-    ("🔧", "Maintenance\nPlanning Agent", AMBER,
-     [("Input",   "Query + docs + reliability_result"),
-      ("Output",  "immediate_actions[]\nscheduled_maintenance[]\npreventive_measures[]\nmaintenance_urgency"),
-      ("Purpose", "Generates prioritised maintenance\nplan with immediate vs scheduled\nvs preventive actions based on\nseverity and failure type."),
-      ("Fallback","Rule matrix: failure_type maps\nto standard maintenance protocol;\nurge level from severity field")]),
-    ("💡", "Recommendation\nAgent", PURPLE,
-     [("Input",   "Query + docs + all 3 prior outputs"),
-      ("Output",  "summary\nroot_cause\nconfidence_score (0–100)\nkey_findings[]\naction_plan[]\nrisk_assessment"),
-      ("Purpose", "Synthesises all upstream analyses\ninto a final recommendation with\nrisk assessment, root cause,\nand actionable confidence score."),
-      ("Fallback","Aggregates rule-based findings;\nscores confidence from doc count\n+ failure count heuristic")]),
+agents = [
+    ("🔍", "Equipment\nRetrieval Agent", BLUE, LTBLUE, [
+        ("Takes",    "Query + top-k retrieved docs"),
+        ("Finds",    "Relevant equipment types\nhospital units, query intent"),
+        ("Returns",  "equipment_focus[]\nquery_intent, relevant_incidents[]"),
+        ("Fallback", "Keyword extraction from\nequipment names and units"),
+    ]),
+    ("📈", "Reliability\nAnalysis Agent", GREEN, LTGREEN, [
+        ("Takes",    "Query + docs + retrieval result"),
+        ("Computes", "Failure rate %, reliability score\nanomaly detection, patterns"),
+        ("Returns",  "reliability_score (0–100)\nanomalies[], failure_patterns[]"),
+        ("Fallback", "Threshold-based analysis\non sensor values"),
+    ]),
+    ("🔧", "Maintenance\nPlanning Agent", PURPLE, LTPURP, [
+        ("Takes",    "Query + docs + reliability result"),
+        ("Creates",  "Prioritised action plan\nwith urgency level"),
+        ("Returns",  "immediate_actions[]\nscheduled_maintenance[]\nurgency: critical/high/routine"),
+        ("Fallback", "Failure type → standard\nmaintenance protocol lookup"),
+    ]),
+    ("💡", "Recommendation\nAgent", AMBER, LTAMBER, [
+        ("Takes",    "Query + ALL 3 prior outputs"),
+        ("Builds",   "Final recommendation\nwith root cause analysis"),
+        ("Returns",  "summary, root_cause\nconfidence_score (0–100)\nrisk_assessment, action_plan[]"),
+        ("Fallback", "Aggregates rule-based\nfindings into summary"),
+    ]),
 ]
 
 ax = 0.2
-for icon, title, col, items in agent_data:
-    box(sl, ax, 0.8, 3.18, 6.5, WHITE, col)
-    box(sl, ax, 0.8, 3.18, 0.72, col)
-    txt(sl, icon, ax + 0.1, 0.86, 0.52, 0.6, size=22, align=PP_ALIGN.CENTER)
-    txt(sl, title, ax + 0.65, 0.88, 2.42, 0.6, size=9.5, bold=True)
-
-    iy = 1.62
-    for lbl, val in items:
-        txt(sl, lbl + ":", ax + 0.14, iy, 0.88, 0.26, size=7.5, bold=True, color=col)
-        txt(sl, val, ax + 0.14, iy + 0.24, 2.9, 0.72, size=7.5, color=DGRAY)
-        iy += 1.08
-
+for icon, title, col, lt, rows in agents:
+    rect(sl, ax, 0.98, 3.18, 6.22, lt, col, 2.5)
+    # Header
+    rect(sl, ax, 0.98, 3.18, 0.82, col)
+    label(sl, icon, ax+0.12, 1.02, 0.55, 0.72, size=24, align=PP_ALIGN.CENTER, color=WHITE)
+    label(sl, title, ax+0.7, 1.08, 2.35, 0.65,
+          size=11, bold=True, color=WHITE)
+    # Flow badge
+    rect(sl, ax+0.18, 1.88, 2.82, 0.26, col)
+    label(sl, "Claude Sonnet 4.6  (rule-based fallback)",
+          ax+0.25, 1.89, 2.68, 0.24, size=7.5, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+    # Rows
+    ry = 2.24
+    for rk, rv in rows:
+        rect(sl, ax+0.18, ry, 2.82, 0.88, WHITE, col, 0.8)
+        label(sl, rk, ax+0.28, ry+0.08, 0.65, 0.28, size=8, bold=True, color=col)
+        label(sl, rv, ax+0.96, ry+0.08, 1.94, 0.72, size=8, color=DGRAY)
+        ry += 0.97
     ax += 3.28
 
-# Orchestration strip
-box(sl, 0.2, 7.1, 12.9, 0.3, NAVY)
-txt(sl, "LangGraph StateGraph orchestration  ·  Sequential: Retrieval Agent → Reliability Agent → Maintenance Agent → Recommendation Agent  ·  State shared via MedEquipState TypedDict",
-    0.35, 7.14, 12.5, 0.24, size=7.5, color=WHITE, align=PP_ALIGN.CENTER)
+# Sequential flow arrows
+for ax2 in [3.38, 6.66, 9.94]:
+    arrow(sl, ax2, 4.08, ax2+0.2, 4.08, NAVY, 2.5)
+    label(sl, "→", ax2-0.02, 3.82, 0.3, 0.32, size=14, bold=True, color=NAVY, align=PP_ALIGN.CENTER)
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# SLIDE 6 — Guardrails + DeepEval + LLM-as-Judge
+# SLIDE 7 — GUARDRAILS (visual flow)
 # ══════════════════════════════════════════════════════════════════════════
-sl = blank_slide()
-bg(sl, LGRAY)
-box(sl, 0, 0, 13.33, 0.65, NAVY)
-txt(sl, "Quality Assurance — Guardrails + DeepEval + LLM-as-Judge", 0.35, 0.08, 11, 0.48, size=21, bold=True)
-txt(sl, "Three-layer QA: Input guardrail → Output guardrail → Post-hoc DeepEval evaluation + LLM-as-judge scoring",
-    0.35, 0.38, 12, 0.28, size=9.5, color=CYAN)
+sl = slide(); bg(sl, OFFWHT)
+hdr(sl, "GPT-4o mini Guardrails — Input & Output Validation",
+    "Every query is validated before processing · Every recommendation is scored before delivery")
 
-# Input Guardrail
-box(sl, 0.2, 0.8, 4.0, 2.95, WHITE, AMBER)
-box(sl, 0.2, 0.8, 4.0, 0.46, AMBER)
-txt(sl, "🛡  INPUT GUARDRAIL", 0.35, 0.86, 3.7, 0.36, size=11, bold=True)
-ig = [
-    ("Model",    "GPT-4o mini  (rule-based fallback)"),
-    ("Checks",   "Medical equipment relevance\nHarmful pattern detection (regex)\nIntent classification\nUrgency: immediate / routine / low"),
-    ("Output",   "is_valid → routes pipeline\nrefined_query (improved version)\nintent, equipment_type, urgency"),
-    ("Patterns", "hack, exploit, bypass, disable,\nignore safety, override limit"),
+# === Input Guardrail (left half) ===
+rect(sl, 0.2, 0.95, 6.3, 6.3, LTAMBER, AMBER, 2)
+rect(sl, 0.2, 0.95, 6.3, 0.58, AMBER)
+label(sl, "🛡  INPUT GUARDRAIL", 0.38, 1.01, 5.94, 0.44,
+      size=14, bold=True, color=WHITE)
+
+# Flow inside input guardrail
+rect(sl, 0.48, 1.68, 2.55, 0.65, WHITE, BLUE, 1.5)
+label(sl, "User Query", 0.58, 1.74, 2.35, 0.5, size=11, bold=True, color=BLUE, align=PP_ALIGN.CENTER)
+
+arrow(sl, 1.75, 2.33, 1.75, 2.72, AMBER, 2)
+
+rect(sl, 0.48, 2.72, 2.55, 0.82, AMBER)
+label(sl, "GPT-4o mini\n(rule-based fallback)", 0.58, 2.78, 2.35, 0.66,
+      size=10, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+
+arrow(sl, 1.75, 3.54, 1.75, 3.9, AMBER, 2)
+
+# Checks box
+rect(sl, 0.38, 3.9, 2.75, 2.85, WHITE, AMBER, 1)
+label(sl, "What it checks:", 0.52, 4.0, 2.48, 0.3, size=9, bold=True, color=AMBER)
+checks = ["Medical equipment relevance?",
+          "Harmful patterns? (bypass, hack…)",
+          "Intent: failure_analysis / status…",
+          "Urgency: immediate / routine / low",
+          "Refines query if needed"]
+cy = 4.36
+for ch in checks:
+    label(sl, "✓  "+ch, 0.52, cy, 2.48, 0.36, size=9, color=DGRAY)
+    cy += 0.42
+
+# VALID / INVALID paths
+rect(sl, 3.3, 2.52, 2.9, 0.78, LTGREEN, GREEN, 1.5)
+label(sl, "✅  VALID\n→ Pipeline continues", 3.44, 2.6, 2.62, 0.62,
+      size=10, bold=True, color=GREEN, align=PP_ALIGN.CENTER)
+
+rect(sl, 3.3, 3.58, 2.9, 0.78, LTRED, RED, 1.5)
+label(sl, "❌  INVALID\n→ Rejection + reason returned", 3.44, 3.66, 2.62, 0.62,
+      size=10, bold=True, color=RED, align=PP_ALIGN.CENTER)
+
+arrow(sl, 3.03, 2.88, 3.3, 2.88, GREEN, 2)
+arrow(sl, 3.03, 3.95, 3.3, 3.95, RED, 2)
+label(sl, "VALID\nrouting", 2.94, 2.68, 0.5, 0.28, size=7, color=GREEN)
+label(sl, "INVALID\nrouting", 2.94, 3.82, 0.6, 0.28, size=7, color=RED)
+
+label(sl, "Returns: is_valid · refined_query · intent · equipment_type · urgency",
+      0.38, 6.88, 5.9, 0.28, size=8, color=DGRAY, italic=True)
+
+# === Output Guardrail (right half) ===
+rect(sl, 6.85, 0.95, 6.28, 6.3, LTAMBER, AMBER, 2)
+rect(sl, 6.85, 0.95, 6.28, 0.58, AMBER)
+label(sl, "🛡  OUTPUT GUARDRAIL", 7.02, 1.01, 5.94, 0.44,
+      size=14, bold=True, color=WHITE)
+
+rect(sl, 7.1, 1.68, 2.55, 0.65, WHITE, PURPLE, 1.5)
+label(sl, "Recommendation\nfrom Agents", 7.2, 1.72, 2.35, 0.56,
+      size=11, bold=True, color=PURPLE, align=PP_ALIGN.CENTER)
+
+arrow(sl, 8.37, 2.33, 8.37, 2.72, AMBER, 2)
+
+rect(sl, 7.1, 2.72, 2.55, 0.82, AMBER)
+label(sl, "GPT-4o mini\n(rule-based fallback)", 7.2, 2.78, 2.35, 0.66,
+      size=10, bold=True, color=WHITE, align=PP_ALIGN.CENTER)
+
+arrow(sl, 8.37, 3.54, 8.37, 3.9, AMBER, 2)
+
+rect(sl, 7.0, 3.9, 2.75, 3.2, WHITE, AMBER, 1)
+label(sl, "Scoring rubric (0–100):", 7.12, 4.02, 2.5, 0.3, size=9, bold=True, color=AMBER)
+scoring = [
+    ("+10", "Has ≥ 3 action items"),
+    ("+10", "Has ≥ 3 key findings"),
+    ("+10", "Summary ≥ 50 chars"),
+    ("+10", "Confidence ≥ 70%"),
+    ("−20", "High risk but no actions"),
+    ("−30", "Unsafe language detected"),
 ]
-gy = 1.36
-for lbl, val in ig:
-    txt(sl, lbl + ":", 0.35, gy, 0.95, 0.28, size=7.5, bold=True, color=AMBER)
-    txt(sl, val, 1.32, gy, 2.72, 0.58, size=7.5, color=DGRAY)
-    gy += 0.66
+sy = 4.4
+for pts, desc in scoring:
+    col_s = GREEN if "+" in pts else RED
+    label(sl, pts, 7.12, sy, 0.44, 0.34, size=9, bold=True, color=col_s)
+    label(sl, desc, 7.6, sy, 2.1, 0.34, size=9, color=DGRAY)
+    sy += 0.38
 
-# Output Guardrail
-box(sl, 4.45, 0.8, 4.0, 2.95, WHITE, AMBER)
-box(sl, 4.45, 0.8, 4.0, 0.46, AMBER)
-txt(sl, "🛡  OUTPUT GUARDRAIL", 4.6, 0.86, 3.7, 0.36, size=11, bold=True)
-og = [
-    ("Model",   "GPT-4o mini  (rule-based fallback)"),
-    ("Checks",  "Recommendation completeness\nClinical safety validation\nQuality scoring 0–100"),
-    ("Scoring", "+10 ≥ 3 action items\n+10 ≥ 3 key findings\n+10 summary ≥ 50 chars\n+10 confidence ≥ 70%\n−20/−30 unsafe language"),
-    ("Output",  "quality_score (0–100)\nsafety_rating: safe/caution/unsafe\nis_safe, completeness_check{}"),
+# Quality output
+rect(sl, 9.9, 1.72, 2.85, 4.0, WHITE, AMBER, 1)
+label(sl, "Output includes:", 10.05, 1.85, 2.55, 0.3, size=9, bold=True, color=AMBER)
+outputs = ["quality_score  (0–100)",
+           "safety_rating: safe / caution / unsafe",
+           "is_safe  (True / False)",
+           "approved_recommendation",
+           "completeness_check{ }",
+           "issues[ ]  (if any flagged)"]
+oy = 2.22
+for op in outputs:
+    rect(sl, 10.05, oy, 2.55, 0.46, OFFWHT, AMBER, 0.5)
+    label(sl, op, 10.15, oy+0.06, 2.35, 0.34, size=8.5, color=DGRAY)
+    oy += 0.52
+
+label(sl, "Returns: quality_score · safety_rating · is_safe · completeness_check{ }",
+      6.92, 6.88, 5.9, 0.28, size=8, color=DGRAY, italic=True)
+
+
+# ══════════════════════════════════════════════════════════════════════════
+# SLIDE 8 — DEEPEVAL + LLM-AS-JUDGE
+# ══════════════════════════════════════════════════════════════════════════
+sl = slide(); bg(sl, OFFWHT)
+hdr(sl, "DeepEval RAG Evaluation + LLM-as-Judge",
+    "Post-hoc quality measurement: 4 RAG metrics + 4-dimension judge scoring (total 0–100)")
+
+# DeepEval left
+rect(sl, 0.2, 0.98, 6.3, 6.3, LTPURP, PURPLE, 2)
+rect(sl, 0.2, 0.98, 6.3, 0.62, PURPLE)
+label(sl, "📊  DeepEval RAG Metrics  (evaluation.py)", 0.38, 1.04, 5.9, 0.48,
+      size=14, bold=True, color=WHITE)
+
+de_metrics = [
+    ("Answer Relevancy",      "Is the recommendation relevant to the original query?\nChecks keyword overlap and entity presence in the answer.",         "≥ 0.6 to pass"),
+    ("Faithfulness",          "Is the answer grounded in the retrieved incident context?\nTraces entities in the answer back to retrieved documents.",     "≥ 0.6 to pass"),
+    ("Contextual Precision",  "Are the top-ranked retrieved docs more relevant than lower-ranked?\nChecks precision@k ordering is monotone decreasing.",   "≥ 0.5 to pass"),
+    ("Contextual Recall",     "Does the retrieved context cover all facts in the answer?\nExtracts medical entities from answer and checks in context.",   "≥ 0.5 to pass"),
 ]
-gy = 1.36
-for lbl, val in og:
-    txt(sl, lbl + ":", 4.6, gy, 0.88, 0.28, size=7.5, bold=True, color=AMBER)
-    txt(sl, val, 5.5, gy, 2.78, 0.75, size=7.5, color=DGRAY)
-    gy += 0.66
+dy = 1.74
+for metric, desc, threshold in de_metrics:
+    rect(sl, 0.38, dy, 5.94, 1.24, WHITE, PURPLE, 1.2)
+    rect(sl, 0.38, dy, 5.94, 0.36, PURPLE)
+    label(sl, metric, 0.52, dy+0.05, 4.5, 0.28, size=10, bold=True, color=WHITE)
+    label(sl, threshold, 4.8, dy+0.05, 1.4, 0.28, size=8.5, color=LTPURP, align=PP_ALIGN.RIGHT)
+    label(sl, desc, 0.52, dy+0.44, 5.6, 0.7, size=8.5, color=DGRAY)
+    dy += 1.36
 
-# DeepEval
-box(sl, 8.7, 0.8, 4.4, 2.95, WHITE, PURPLE)
-box(sl, 8.7, 0.8, 4.4, 0.46, PURPLE)
-txt(sl, "📊  DEEPEVAL RAG METRICS", 8.85, 0.86, 4.1, 0.36, size=11, bold=True)
-dv = [
-    ("Answer Relevancy",     "Recommendation relevant to query?\nKeyword overlap + entity check"),
-    ("Faithfulness",         "Answer grounded in retrieved context?\nEntity traceability scoring"),
-    ("Contextual Precision", "Top docs more relevant than lower?\nPrecision@k ordering check"),
-    ("Contextual Recall",    "Context covers all answer facts?\nFact extraction + lookup"),
-]
-dy = 1.36
-for metric, desc in dv:
-    box(sl, 8.85, dy, 4.1, 0.58, LGRAY, PURPLE)
-    txt(sl, metric, 8.97, dy + 0.05, 3.86, 0.24, size=8.5, bold=True, color=PURPLE)
-    txt(sl, desc,   8.97, dy + 0.3,  3.86, 0.26, size=7.5, color=DGRAY)
-    dy += 0.66
+label(sl, "Mode: LLM-powered (OpenAI) when key available · Rule-based fallback always available",
+      0.38, 6.88, 5.9, 0.28, size=8, color=MGRAY, italic=True)
 
-# LLM-as-Judge section
-box(sl, 0.2, 3.9, 12.9, 3.38, WHITE, PURPLE)
-box(sl, 0.2, 3.9, 12.9, 0.46, PURPLE)
-txt(sl, "⚖  LLM-as-Judge — 4-Dimension Rubric  (Total: 0 – 100)", 0.38, 3.96, 12.5, 0.36, size=12, bold=True)
+# LLM-as-Judge right
+rect(sl, 6.85, 0.98, 6.28, 6.3, LTAMBER, AMBER, 2)
+rect(sl, 6.85, 0.98, 6.28, 0.62, AMBER)
+label(sl, "⚖  LLM-as-Judge  (llm_judge.py)  — Total: 0–100", 7.02, 1.04, 5.9, 0.48,
+      size=14, bold=True, color=WHITE)
 
 dims = [
-    ("Clinical Safety\n(0 – 25)", RED,
-     "Are recommendations safe for patients and hospital staff?\n"
-     "25: All actions clinically safe; hazardous equipment flagged for shutdown\n"
-     "0 : Recommendation could endanger patients (e.g. continue using failed equipment)"),
-    ("Technical Accuracy\n(0 – 25)", BLUE,
-     "Are technical details correct and evidence-based?\n"
-     "25: Temperatures, torque, wear values correctly cited from retrieved incidents\n"
-     "0 : Technical claims fabricated or contradict the retrieved incident data"),
-    ("Actionability\n(0 – 25)", GREEN,
-     "Are recommended actions concrete and immediately implementable?\n"
-     "25: Specific, prioritised steps that biomedical engineers can act on now\n"
-     "0 : Vague or contradictory actions that cannot be carried out in practice"),
-    ("Evidence Basis\n(0 – 25)", AMBER,
-     "Is the recommendation grounded in retrieved incidents?\n"
-     "25: All claims traceable to specific incidents; no hallucinated data\n"
-     "0 : Ignores retrieved incidents entirely or contradicts the evidence"),
+    ("Clinical Safety",    "0–25", RED,    "Are recommendations safe for patients and staff?\n25: All actions safe, hazards flagged for shutdown\n 0: Could endanger patients"),
+    ("Technical Accuracy", "0–25", BLUE,   "Are technical details correct and evidence-based?\n25: Temperatures, torque, wear correctly cited\n 0: Fabricated or contradicts retrieved data"),
+    ("Actionability",      "0–25", GREEN,  "Are actions concrete and immediately implementable?\n25: Specific, prioritised, biomedical-ready steps\n 0: Vague or contradictory actions"),
+    ("Evidence Basis",     "0–25", AMBER,  "Is recommendation grounded in retrieved incidents?\n25: All claims traceable to specific incidents\n 0: Ignores evidence, hallucinated data"),
 ]
-jx = 0.35
-for dim, col, desc in dims:
-    box(sl, jx, 4.46, 3.12, 2.68, LGRAY, col)
-    txt(sl, dim, jx + 0.12, 4.54, 2.88, 0.52, size=9.5, bold=True, color=col)
-    txt(sl, desc, jx + 0.12, 5.08, 2.88, 2.0,  size=7.5, color=DGRAY)
-    jx += 3.24
+jy = 1.74
+for dim, pts, col, desc in dims:
+    rect(sl, 7.02, jy, 5.94, 1.24, WHITE, col, 1.2)
+    rect(sl, 7.02, jy, 5.94, 0.36, col)
+    label(sl, dim, 7.15, jy+0.05, 4.5, 0.28, size=10, bold=True, color=WHITE)
+    label(sl, pts, 11.3, jy+0.05, 0.55, 0.28, size=11, bold=True, color=WHITE, align=PP_ALIGN.RIGHT)
+    label(sl, desc, 7.15, jy+0.44, 5.68, 0.72, size=8.5, color=DGRAY)
+    jy += 1.36
 
-txt(sl, "Judge priority order:  GPT-4o mini  →  Claude Sonnet 4.6  →  Rule-based scoring",
-    0.38, 7.1, 12.5, 0.26, size=8, color=GRAY, italic=True)
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# SLIDE 7 — Dataset & Ingestion Pipeline
-# ══════════════════════════════════════════════════════════════════════════
-sl = blank_slide()
-bg(sl, LGRAY)
-box(sl, 0, 0, 13.33, 0.65, NAVY)
-txt(sl, "Dataset Architecture — UCI AI4I 2020 → Medical Equipment", 0.35, 0.08, 11, 0.48, size=21, bold=True)
-txt(sl, "data_ingestion.py pipeline: Generate ai4i2020.csv (UCI schema) → Enrich with medical context → Build RAG index",
-    0.35, 0.38, 12, 0.28, size=9.5, color=CYAN)
-
-# Pipeline flow
-flow = [
-    ("ai4i2020.csv\n(UCI Schema)", "10,000 rows × 14 cols\nUCI ML Repository format\nStatistical distributions\nmatching real dataset", BLUE,   0.2),
-    ("data_ingestion.py\n(Mapping)",  "Step 1: Generate UCI CSV\nStep 2: Map Type→Equipment\nStep 3: Add medical context\nStep 4: Save both CSVs",  NAVY,   3.55),
-    ("medical_equipment\n_maintenance.csv", "10,000 rows × 32 cols\nAll UCI cols retained\n+ 18 medical context cols\nRAG-ready with full text", GREEN,  6.9),
-    ("RAG Index\n(Cached)",      "FAISS: 10k × 384-dim\nBM25: tokenised corpus\nEmbeddings: .npy file\nDocuments: .pkl cache",  PURPLE, 10.25),
-]
-for title, desc, col, x in flow:
-    box(sl, x, 1.1, 3.0, 1.9, col)
-    txt(sl, title, x + 0.14, 1.18, 2.72, 0.55, size=10, bold=True, align=PP_ALIGN.CENTER)
-    txt(sl, desc,  x + 0.14, 1.76, 2.72, 1.18, size=8, color=WHITE)
-    if x < 10.25:
-        txt(sl, "→", x + 3.05, 1.85, 0.38, 0.36, size=18, bold=True, color=NAVY, align=PP_ALIGN.CENTER)
-
-# UCI Schema table
-box(sl, 0.2, 3.2, 6.2, 4.1, WHITE, BLUE)
-txt(sl, "ai4i2020.csv — Exact UCI Schema (14 columns)", 0.35, 3.28, 5.9, 0.34, size=10, bold=True, color=BLUE)
-uci = [
-    ("UDI",                    "Record index 1–10,000"),
-    ("Product ID",             "L/M/H prefix + 5-digit num"),
-    ("Type",                   "L=50%  M=30%  H=20%"),
-    ("Air temperature [K]",    "~300K, std 2K"),
-    ("Process temperature [K]","Air temp + ~10K"),
-    ("Rotational speed [rpm]", "~1500 rpm, std 200"),
-    ("Torque [Nm]",            "~40 Nm, std 10"),
-    ("Tool wear [min]",        "0–253 min (uniform)"),
-    ("Machine failure",        "1 = failed (~1.9%)"),
-    ("TWF",                    "Tool Wear Failure"),
-    ("HDF",                    "Heat Dissipation Failure"),
-    ("PWF",                    "Power Failure"),
-    ("OSF",                    "Overstrain Failure"),
-    ("RNF",                    "Random Failure (~0.1%)"),
-]
-cy = 3.7
-cx = 0.38
-for i, (col, desc) in enumerate(uci):
-    col_x = cx + (i % 2) * 3.0
-    col_y = cy + (i // 2) * 0.42
-    txt(sl, col + ":", col_x, col_y, 1.55, 0.32, size=7.5, bold=True, color=BLUE)
-    txt(sl, desc,       col_x + 1.57, col_y, 1.38, 0.32, size=7.5, color=DGRAY)
-
-# Mapping table
-box(sl, 6.6, 3.2, 6.5, 4.1, WHITE, GREEN)
-txt(sl, "Medical Equipment Mapping  (data_ingestion.py)", 6.75, 3.28, 6.2, 0.34, size=10, bold=True, color=GREEN)
-mapping = [
-    ("Type L (50%)",              "→ Ventilator, Infusion Pump, Patient Monitor"),
-    ("Type M (30%)",              "→ Ultrasound, ICU Device, Lab Analyzer"),
-    ("Type H (20%)",              "→ MRI, CT Scanner"),
-    ("TWF / HDF / PWF / OSF / RNF","→ failure_type (human-readable string)"),
-    ("UDI mod len(options)",      "→ equipment_id  (e.g. MRI001, VEN002)"),
-    ("Equipment type",            "→ hospital_unit  (e.g. Radiology, ICU)"),
-    ("Machine failure + severity","→ downtime_hours, maintenance_cost_usd"),
-    ("Technician notes",          "5 categories × 4 templates each"),
-    ("Timestamps",                "2023-01-01 → 2024-12-31  (random)"),
-    ("Total output cols",         "32 columns  (14 UCI + 18 enriched)"),
-]
-my = 3.7
-for src, tgt in mapping:
-    txt(sl, src + ":", 6.75, my, 2.45, 0.3, size=7.5, bold=True, color=GREEN)
-    txt(sl, tgt,       9.22, my, 3.72, 0.3, size=7.5, color=DGRAY)
-    my += 0.4
+label(sl, "Priority: GPT-4o mini  →  Claude Sonnet 4.6  →  Rule-based  (all 3 levels fully implemented)",
+      7.02, 6.88, 5.9, 0.28, size=8, color=MGRAY, italic=True)
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# SLIDE 8 — Technology Stack
+# SLIDE 9 — END-TO-END DATA FLOW (numbered journey)
 # ══════════════════════════════════════════════════════════════════════════
-sl = blank_slide()
-bg(sl, LGRAY)
-box(sl, 0, 0, 13.33, 0.65, NAVY)
-txt(sl, "Technology Stack", 0.35, 0.08, 10, 0.48, size=22, bold=True)
-txt(sl, "All libraries, versions and roles in the system",
-    0.35, 0.38, 10, 0.28, size=10, color=CYAN)
-
-categories = [
-    ("FRONTEND", BLUE, [
-        ("React 18",          "UI component framework"),
-        ("Vite 8.0",          "Build tool & dev server"),
-        ("Recharts",          "BarChart, LineChart, PieChart"),
-        ("Axios",             "HTTP client for API calls"),
-        ("CSS Grid / Flex",   "Responsive layout system"),
-    ]),
-    ("BACKEND", NAVY, [
-        ("FastAPI 0.104",     "REST API framework"),
-        ("Uvicorn",           "ASGI server"),
-        ("Pydantic v2",       "Request / response models"),
-        ("pandas 2.1",        "DataFrame operations"),
-        ("numpy 1.26",        "Embedding arithmetic"),
-    ]),
-    ("AI / LLM", PURPLE, [
-        ("Claude Sonnet 4.6", "4 AI analysis agents"),
-        ("GPT-4o mini",       "Input + output guardrails"),
-        ("anthropic ≥0.25",   "Anthropic API client"),
-        ("openai ≥2.0",       "OpenAI API client"),
-        ("LangGraph 1.2",     "StateGraph multi-agent pipeline"),
-    ]),
-    ("RAG / SEARCH", GREEN, [
-        ("FAISS-CPU 1.7.4",          "Vector similarity index"),
-        ("sentence-transformers",     "all-MiniLM-L6-v2 embeddings"),
-        ("rank-bm25 0.2.2",          "BM25Okapi keyword search"),
-        ("scikit-learn 1.3",         "ML utilities"),
-        ("numpy (embeddings.npy)",   "Reranking embedding cache"),
-    ]),
-    ("EVALUATION", AMBER, [
-        ("DeepEval 4.0.5",     "RAG quality metrics library"),
-        ("LLM-as-Judge",       "4-dimension rubric scoring"),
-        ("AnswerRelevancy",    "DeepEval metric"),
-        ("Faithfulness",       "DeepEval metric"),
-        ("Contextual metrics", "Precision + Recall"),
-    ]),
-    ("DATASET", CYAN, [
-        ("ai4i2020.csv",              "UCI AI4I 2020 (10k rows)"),
-        ("medical_equip_maint.csv",   "Enriched (32 cols)"),
-        ("faiss_index.bin",           "15 MB FAISS index"),
-        ("embeddings.npy",            "10k × 384-dim float32"),
-        ("bm25.pkl + documents.pkl",  "BM25 + doc text cache"),
-    ]),
-]
-
-for i, (cat, col, items) in enumerate(categories):
-    row   = i // 3
-    col_i = i % 3
-    bx = 0.2 + col_i * 4.35
-    by = 0.82 + row * 3.28
-    box(sl, bx, by, 4.1, 3.1, WHITE, col)
-    box(sl, bx, by, 4.1, 0.44, col)
-    txt(sl, cat, bx + 0.15, by + 0.07, 3.8, 0.34, size=10, bold=True)
-    iy = by + 0.54
-    for lib, purpose in items:
-        box(sl, bx + 0.15, iy, 3.8, 0.42, LGRAY)
-        txt(sl, lib,     bx + 0.28, iy + 0.05, 1.65, 0.32, size=8,   bold=True, color=col)
-        txt(sl, purpose, bx + 1.98, iy + 0.05, 1.95, 0.32, size=7.5, color=DGRAY)
-        iy += 0.48
-
-
-# ══════════════════════════════════════════════════════════════════════════
-# SLIDE 9 — End-to-End Data Flow (step by step)
-# ══════════════════════════════════════════════════════════════════════════
-sl = blank_slide()
-bg(sl, DGRAY)
-box(sl, 0, 0, 13.33, 0.65, CYAN)
-txt(sl, "End-to-End Data Flow — User Query to Recommendation", 0.35, 0.08, 11, 0.48, size=21, bold=True, color=NAVY)
+sl = slide(); bg(sl, DGRAY)
+rect(sl, 0, 0, 13.33, 0.78, CYAN)
+label(sl, "End-to-End Data Flow — From User Query to Recommendation",
+      0.35, 0.1, 12.6, 0.52, size=22, bold=True, color=NAVY)
 
 steps = [
-    ("1", "User types query in React AI Assistant chat",
-     "e.g.  'Critical MRI overheating failure in Radiology unit — recommend maintenance steps'",    BLUE),
-    ("2", "Axios POST /api/query  →  FastAPI endpoint",
-     "Payload: { query, k=5, alpha=0.6, equipment_type?, hospital_unit?, severity?, failure_only? }", CYAN),
-    ("3", "FastAPI calls run_langgraph_pipeline()  →  pipeline.invoke(MedEquipState)",
-     "Initial state: 17 fields initialised — query, filters, k, alpha; is_valid=False; logs=[]",     NAVY),
-    ("4", "node_input_guardrail()  →  GPT-4o mini / rule-based",
-     "Returns: is_valid=True/False, intent='failure_analysis', urgency='immediate', refined_query='…'", AMBER),
-    ("5", "node_rag_retrieval()  →  Hybrid FAISS + BM25 + Embedding Rerank",
-     "Returns: retrieved_docs[k]  each with  relevance_score, document_text, equipment_id, failure_type, …", GREEN),
-    ("6", "4 × Agent nodes  →  Claude Sonnet 4.6 / rule-based  (sequential via LangGraph edges)",
-     "Retrieval → Reliability → Maintenance → Recommendation.  Each reads state and writes its result back.", PURPLE),
-    ("7", "node_output_guardrail()  →  GPT-4o mini / rule-based",
-     "Returns: quality_score (0-100), safety_rating='safe/caution/unsafe', approved_recommendation",    AMBER),
-    ("8", "FastAPI maps final LangGraph state → QueryResponse JSON",
-     "agent_analysis, guardrails{input+output}, pipeline_log[], node_timings{}, refined_query, processing_time_ms", BLUE),
-    ("9", "React renders AssistantMessage component",
-     "GuardrailBadges + RefinedQueryNote + PipelineLog + KeyFindings + ActionPlan + ScoreCircle",        CYAN),
+    ("1", BLUE,   "User types a maintenance query",
+     "e.g.  'Critical MRI overheating failure in Radiology — what should I do?'",
+     "React AI Assistant → ChatInterface.jsx"),
+    ("2", CYAN,   "React sends POST /api/query via Axios",
+     "Payload: { query, k=5, alpha=0.6, equipment_type?, hospital_unit? }",
+     "FastAPI validates request with Pydantic model"),
+    ("3", RGBColor(0x55,0x80,0xb4), "FastAPI calls run_langgraph_pipeline()",
+     "Initialises MedEquipState TypedDict with 17 fields",
+     "LangGraph pipeline.invoke(initial_state) begins"),
+    ("4", AMBER,  "node_input_guardrail()  runs GPT-4o mini",
+     "Checks relevance, safety, intent → returns is_valid=True/False + refined_query",
+     "INVALID → rejection node → END  |  VALID → continues"),
+    ("5", GREEN,  "node_rag_retrieval()  runs Hybrid Search",
+     "FAISS vector search + BM25 keyword search → score fusion → embedding rerank → metadata filter",
+     "Returns top-k incidents with relevance_score and full metadata"),
+    ("6", PURPLE, "4 Agent nodes run sequentially (Claude / rule-based)",
+     "Retrieval → Reliability → Maintenance → Recommendation  (each reads + writes state)",
+     "Final output: summary, root_cause, risk_assessment, confidence_score (0–100)"),
+    ("7", AMBER,  "node_output_guardrail()  validates recommendation",
+     "GPT-4o mini scores quality (0–100), safety_rating, completeness_check",
+     "Approved recommendation passed forward"),
+    ("8", BLUE,   "FastAPI maps LangGraph final state → JSON response",
+     "agent_analysis, guardrails{input+output}, pipeline_log[], node_timings{}",
+     "Returns QueryResponse with full pipeline trace"),
+    ("9", CYAN,   "React renders the full result in the chat",
+     "GuardrailBadges + PipelineLog (expandable) + KeyFindings + ActionPlan + ScoreCircle",
+     "User sees structured, validated, evidence-based recommendation"),
 ]
 
-for i, (num, title, detail, col) in enumerate(steps):
-    y = 0.82 + i * 0.72
-    box(sl, 0.2, y, 0.48, 0.56, col)
-    txt(sl, num,    0.2,  y + 0.08, 0.48, 0.4, size=14, bold=True, align=PP_ALIGN.CENTER)
-    box(sl, 0.78,  y, 12.3, 0.56, RGBColor(0x26, 0x37, 0x50), col)
-    txt(sl, title,  0.94, y + 0.04, 5.2,  0.26, size=9,   bold=True, color=col)
-    txt(sl, detail, 0.94, y + 0.3,  12.0, 0.24, size=7.5, color=RGBColor(0xb8, 0xca, 0xdf))
+for i, (num, col, title, detail, note) in enumerate(steps):
+    y = 0.9 + i * 0.72
+    rect(sl, 0.2, y, 0.56, 0.58, col)
+    label(sl, num, 0.2, y+0.06, 0.56, 0.46, size=16, bold=True,
+          color=WHITE, align=PP_ALIGN.CENTER)
+    rect(sl, 0.86, y, 12.24, 0.58, RGBColor(0x24,0x36,0x52), col)
+    label(sl, title,  1.02, y+0.05, 4.8,  0.26, size=9.5, bold=True, color=col)
+    label(sl, detail, 1.02, y+0.3,  8.5,  0.24, size=8, color=RGBColor(0xb8,0xca,0xdf))
+    label(sl, note,   9.55, y+0.3,  3.42, 0.24, size=7.5, color=MGRAY, italic=True)
+
+    if i < 8:
+        rect(sl, 0.38, y+0.58, 0.2, 0.12, RGBColor(0x38,0x50,0x6e))
 
 
 # ══════════════════════════════════════════════════════════════════════════
-# SLIDE 10 — Requirement Coverage Summary
+# SLIDE 10 — TECH STACK + REQUIREMENT COVERAGE
 # ══════════════════════════════════════════════════════════════════════════
-sl = blank_slide()
-bg(sl, LGRAY)
-box(sl, 0, 0, 13.33, 0.65, NAVY)
-txt(sl, "Requirement Coverage — All Items Implemented", 0.35, 0.08, 10, 0.48, size=22, bold=True)
-txt(sl, "Requirement 1 (Basic)  +  Requirement 2 (Advanced)  +  Multi-Agent System  +  Frontend — fully implemented & verified",
-    0.35, 0.38, 12, 0.28, size=9.5, color=CYAN)
+sl = slide(); bg(sl, OFFWHT)
+hdr(sl, "Technology Stack & Requirement Coverage",
+    "All Requirement 1 (Basic) + Requirement 2 (Advanced) items implemented, tested and verified")
 
-# Req 1
-box(sl, 0.2, 0.82, 6.1, 6.0, WHITE, BLUE)
-txt(sl, "✅  REQUIREMENT 1 — Basic", 0.35, 0.9, 5.8, 0.36, size=11, bold=True, color=BLUE)
-req1 = [
-    ("Basic RAG incident retrieval",   "FAISS IndexFlatIP · all-MiniLM-L6-v2 · 10,000 records"),
-    ("Hybrid search",                  "FAISS α=0.6 + BM25Okapi α=0.4 · normalised score fusion"),
-    ("Semantic search",                "384-dim sentence embeddings · cosine similarity · cached"),
-    ("Metadata filtering",             "equipment_type, hospital_unit, severity, failure_only"),
-    ("Root-cause recommendation",      "recommendation_agent synthesises all 4 agent outputs"),
-    ("Input validation guardrails",    "GPT-4o mini + rule-based fallback in guardrails.py"),
-    ("Incident similarity ranking",    "3-phase: hybrid → embedding rerank → metadata filter"),
-    ("Maintenance recommendations",    "maintenance_agent · prioritised action plans + urgency"),
-    ("API endpoints for integrations", "12 REST endpoints via FastAPI with Pydantic validation"),
+# Left: tech stack
+rect(sl, 0.2, 0.95, 6.15, 6.3, OFFWHT, NAVY, 1.5)
+rect(sl, 0.2, 0.95, 6.15, 0.48, NAVY)
+label(sl, "⚙  Technology Stack", 0.38, 1.0, 5.77, 0.38, size=12, bold=True, color=WHITE)
+
+tech = [
+    ("Frontend",    BLUE,   "React 18 · Vite 8 · Recharts · Axios"),
+    ("Backend",     NAVY,   "FastAPI 0.104 · Uvicorn · Pydantic v2"),
+    ("AI / LLM",    PURPLE, "Claude Sonnet 4.6 · GPT-4o mini · LangGraph 1.2"),
+    ("RAG",         GREEN,  "FAISS 1.7 · BM25Okapi · sentence-transformers"),
+    ("Evaluation",  AMBER,  "DeepEval 4.0 · LLM-as-Judge · Rule-based"),
+    ("Dataset",     CYAN,   "UCI AI4I 2020 · 10k records · 14 UCI cols → 32 cols"),
 ]
-ry = 1.36
-for req, impl in req1:
-    box(sl, 0.35, ry, 5.8, 0.54, LGRAY, BLUE)
-    txt(sl, "✓  " + req, 0.5, ry + 0.04, 5.55, 0.24, size=8.5, bold=True, color=BLUE)
-    txt(sl, impl,         0.5, ry + 0.28, 5.55, 0.24, size=7.5, color=GRAY)
-    ry += 0.59
+ty = 1.55
+for layer, col, libs in tech:
+    rect(sl, 0.38, ty, 5.8, 0.72, WHITE, col, 1.2)
+    rect(sl, 0.38, ty, 1.12, 0.72, col)
+    label(sl, layer, 0.42, ty+0.12, 1.04, 0.44, size=9.5, bold=True,
+          color=WHITE, align=PP_ALIGN.CENTER)
+    label(sl, libs, 1.56, ty+0.17, 4.5, 0.44, size=9, color=DGRAY)
+    ty += 0.84
 
-# Req 2
-box(sl, 6.6, 0.82, 6.5, 6.0, WHITE, PURPLE)
-txt(sl, "✅  REQUIREMENT 2 — Advanced", 6.75, 0.9, 6.2, 0.36, size=11, bold=True, color=PURPLE)
-req2 = [
-    ("DeepEval evaluation",          "evaluation.py · 4 metrics: AnswerRelevancy, Faithfulness,\nContextualPrecision, ContextualRecall · /api/evaluate"),
-    ("Anomaly correlation analysis",  "/api/analyze/anomaly · temp + wear + RPM\nthreshold anomaly detection with correlation report"),
-    ("Reranking (maintenance embs)", "rag_system.rerank() · cosine_sim + metadata bonus\n+ recency · 3-phase pipeline in hybrid_search()"),
-    ("LLM-as-judge validation",      "llm_judge.py · 4-dim rubric 0–100\n(Safety/Accuracy/Actionability/Evidence) · /api/judge"),
-    ("Token optimization",           "_approx_tokens() word-count budget · max_tokens per\nagent (800-1500) · context truncation in get_context()"),
-    ("Equipment Retrieval Agent",    "Identifies relevant equipment + query intent"),
-    ("Reliability Analysis Agent",   "Failure rate, reliability score 0-100, anomalies"),
-    ("Maintenance Planning Agent",   "Prioritised actions, urgency, preventive measures"),
-    ("Recommendation Agent",         "Final synthesis, confidence score, root cause"),
-    ("Frontend interface",           "6-view React app · chat, dashboard, evaluation,\npipeline, anomaly detection, maintenance records"),
+label(sl, "All components have rule-based fallbacks — system works without any API keys",
+      0.38, 6.88, 5.77, 0.26, size=8, color=MGRAY, italic=True)
+
+# Right: requirements checklist
+rect(sl, 6.65, 0.95, 6.45, 6.3, OFFWHT, NAVY, 1.5)
+rect(sl, 6.65, 0.95, 6.45, 0.48, NAVY)
+label(sl, "✅  All Requirements Implemented", 6.82, 1.0, 6.1, 0.38,
+      size=12, bold=True, color=WHITE)
+
+reqs = [
+    (BLUE,   "Req 1",  [
+        "Basic RAG incident retrieval",
+        "Hybrid search (vector + keyword)",
+        "Metadata filtering (4 filter types)",
+        "Input validation guardrails",
+        "Root-cause recommendation engine",
+        "Incident similarity ranking",
+        "Maintenance recommendations",
+        "12 REST API endpoints",
+    ]),
+    (PURPLE, "Req 2", [
+        "DeepEval evaluation (4 metrics)",
+        "Equipment anomaly correlation",
+        "Embedding reranking (3-phase)",
+        "LLM-as-judge (4 dimensions)",
+        "Token optimisation (budget aware)",
+        "Equipment Retrieval Agent",
+        "Reliability Analysis Agent",
+        "Maintenance + Recommendation Agent",
+    ]),
 ]
-ry = 1.36
-for req, impl in req2:
-    box(sl, 6.75, ry, 6.2, 0.54, LGRAY, PURPLE)
-    txt(sl, "✓  " + req, 6.9, ry + 0.04, 5.95, 0.24, size=8.5, bold=True, color=PURPLE)
-    txt(sl, impl,         6.9, ry + 0.28, 5.95, 0.24, size=7.5, color=GRAY)
-    ry += 0.54
 
-# Footer
-box(sl, 0.2, 6.95, 12.9, 0.42, NAVY)
-txt(sl, "Stack: FastAPI · LangGraph 1.2 · DeepEval 4.0 · FAISS · BM25 · sentence-transformers · Claude Sonnet 4.6 · GPT-4o mini · React 18 · UCI AI4I 2020 (10,000 records)",
-    0.4, 7.0, 12.5, 0.32, size=8, color=WHITE, align=PP_ALIGN.CENTER)
+rx = 6.82
+for col, section, items in reqs:
+    rect(sl, rx, 1.56, 2.98, 0.34, col)
+    label(sl, section, rx+0.1, 1.6, 2.78, 0.26, size=9, bold=True,
+          color=WHITE, align=PP_ALIGN.CENTER)
+    iy = 1.98
+    for item in items:
+        rect(sl, rx, iy, 2.98, 0.54, OFFWHT, col, 0.6)
+        label(sl, "✓  "+item, rx+0.14, iy+0.08, 2.7, 0.36, size=8.5, color=DGRAY)
+        iy += 0.58
+    rx += 3.1
+
+label(sl, "Frontend: 6 views · Chat, Dashboard, Maintenance, Anomaly, LangGraph Pipeline, Evaluation & Judge",
+      6.82, 6.88, 6.1, 0.26, size=8, color=MGRAY, italic=True)
 
 
-# ─── Save ──────────────────────────────────────────────────────────────────
+# ── Save ───────────────────────────────────────────────────────────────────
 out = "/home/labuser/capstone med/MedEquip_AI_Architecture.pptx"
 prs.save(out)
 print(f"Saved → {out}")
+print(f"Slides: 10")

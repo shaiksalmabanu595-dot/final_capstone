@@ -1,53 +1,5 @@
-import os
-import json
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 from collections import Counter
-
-MODEL = "claude-sonnet-4-6"
-
-
-def _api_key_available() -> bool:
-    key = os.environ.get("ANTHROPIC_API_KEY", "").strip()
-    return bool(key) and key not in ("your_anthropic_api_key_here", "")
-
-
-def _get_client():
-    if not _api_key_available():
-        return None
-    try:
-        import anthropic
-        return anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
-    except Exception:
-        return None
-
-
-def _call_claude(client, system: str, user: str, max_tokens: int = 1024) -> Optional[str]:
-    if client is None:
-        return None
-    try:
-        response = client.messages.create(
-            model=MODEL,
-            max_tokens=max_tokens,
-            system=system,
-            messages=[{"role": "user", "content": user}],
-        )
-        return response.content[0].text
-    except Exception as e:
-        print(f"Claude API error: {e}")
-        return None
-
-
-def _extract_json(text: str) -> Optional[dict]:
-    if not text:
-        return None
-    start = text.find("{")
-    end = text.rfind("}") + 1
-    if start >= 0 and end > start:
-        try:
-            return json.loads(text[start:end])
-        except Exception:
-            pass
-    return None
 
 
 # ─── Intelligent Rule-Based Fallbacks ─────────────────────────────────────────
@@ -255,124 +207,49 @@ def _rule_recommendation(query: str, docs: List[Dict], retrieval: Dict, reliabil
         "risk_assessment": risk_level,
         "equipment_status": eq_status,
         "follow_up": maintenance.get("preventive_measures", [])[:3],
-        "api_mode": "rule_based" if not _api_key_available() else "claude_ai",
+        "api_mode": "rule_based",
     }
 
 
 # ─── Agents ───────────────────────────────────────────────────────────────────
 
-def equipment_retrieval_agent(query: str, docs: List[Dict], client) -> Dict:
-    if client is None:
-        return _rule_retrieval(query, docs)
-
-    system = """You are the Equipment Retrieval Agent for a hospital biomedical engineering system.
-Analyze the retrieved maintenance incidents and identify the most relevant ones.
-Return valid JSON only with keys: relevant_incidents (list), query_intent, equipment_focus (list), hospital_units_affected (list), time_period."""
-
-    context = json.dumps([{k: d.get(k) for k in ["equipment_id","equipment_type","hospital_unit","failure_type","severity","relevance_score","timestamp","technician_notes"]} for d in docs[:8]], indent=2)
-    user = f'Engineer Query: "{query}"\n\nRetrieved Records:\n{context}\n\nReturn JSON analysis.'
-
-    result = _extract_json(_call_claude(client, system, user, 800))
-    return result if result else _rule_retrieval(query, docs)
+def equipment_retrieval_agent(query: str, docs: List[Dict]) -> Dict:
+    return _rule_retrieval(query, docs)
 
 
-def reliability_analysis_agent(query: str, docs: List[Dict], retrieval: Dict, client) -> Dict:
-    fallback = _rule_reliability(docs)
-    if client is None:
-        return fallback
-
-    failure_docs = [d for d in docs if d.get("machine_failure") == 1]
-    total = len(docs)
-    stats = {
-        "total_incidents": total,
-        "failures": len(failure_docs),
-        "failure_rate_pct": round(len(failure_docs)/max(total,1)*100,1),
-        "avg_tool_wear_min": round(sum(d.get("tool_wear_min",0) for d in docs)/max(total,1),1),
-        "avg_temp_k": round(sum(d.get("air_temperature_k",298) for d in docs)/max(total,1),2),
-        "failure_types": dict(Counter(d.get("failure_type","") for d in failure_docs)),
-        "severity_breakdown": dict(Counter(d.get("severity","") for d in docs)),
-    }
-
-    system = """You are the Reliability Analysis Agent for a hospital biomedical engineering system.
-Analyze equipment reliability patterns and return valid JSON with keys: failure_rate, reliability_score (0-100), anomalies (list), failure_patterns (list), high_risk_equipment (list), temperature_analysis, wear_analysis, severity_breakdown (object)."""
-
-    user = f'Query: "{query}"\n\nStats:\n{json.dumps(stats,indent=2)}\n\nRelevant equipment: {json.dumps(retrieval.get("relevant_incidents",[])[:5])}\n\nReturn JSON.'
-    result = _extract_json(_call_claude(client, system, user, 1000))
-    return result if result else fallback
+def reliability_analysis_agent(query: str, docs: List[Dict], retrieval: Dict) -> Dict:
+    return _rule_reliability(docs)
 
 
-def maintenance_agent(query: str, docs: List[Dict], reliability: Dict, client) -> Dict:
-    fallback = _rule_maintenance(docs, reliability)
-    if client is None:
-        return fallback
-
-    context = {
-        "query": query,
-        "reliability_score": reliability.get("reliability_score",0),
-        "failure_rate": reliability.get("failure_rate",0),
-        "anomalies": reliability.get("anomalies",[]),
-        "failure_patterns": reliability.get("failure_patterns",[]),
-        "high_risk_equipment": reliability.get("high_risk_equipment",[]),
-        "recent_failures": [{"id":d.get("equipment_id"),"type":d.get("equipment_type"),"failure":d.get("failure_type"),"severity":d.get("severity"),"notes":d.get("technician_notes")} for d in docs if d.get("machine_failure")==1][:5],
-    }
-
-    system = """You are the Maintenance Agent for a hospital biomedical engineering system.
-Suggest specific maintenance actions. Return valid JSON with keys: immediate_actions (list), scheduled_maintenance (list), preventive_measures (list), priority_order (list), estimated_downtime_reduction, maintenance_urgency."""
-
-    user = f'Reliability Analysis:\n{json.dumps(context,indent=2)}\n\nReturn JSON maintenance recommendations.'
-    result = _extract_json(_call_claude(client, system, user, 1200))
-    return result if result else fallback
+def maintenance_agent(query: str, docs: List[Dict], reliability: Dict) -> Dict:
+    return _rule_maintenance(docs, reliability)
 
 
-def recommendation_agent(query: str, docs: List[Dict], retrieval: Dict, reliability: Dict, maintenance: Dict, client) -> Dict:
-    fallback = _rule_recommendation(query, docs, retrieval, reliability, maintenance)
-    if client is None:
-        return fallback
-
-    synthesis = {
-        "query": query,
-        "total_incidents_analyzed": len(docs),
-        "failures_found": sum(1 for d in docs if d.get("machine_failure")==1),
-        "reliability_score": reliability.get("reliability_score",0),
-        "failure_rate": reliability.get("failure_rate",0),
-        "anomalies": reliability.get("anomalies",[]),
-        "failure_patterns": reliability.get("failure_patterns",[]),
-        "immediate_actions": maintenance.get("immediate_actions",[]),
-        "high_risk_equipment": reliability.get("high_risk_equipment",[]),
-        "equipment_focus": retrieval.get("equipment_focus",[]),
-    }
-
-    system = """You are the Chief Recommendation Agent for a hospital biomedical engineering intelligence system.
-Synthesize all agent outputs into a final recommendation. Return valid JSON with keys: summary (string), root_cause (string), confidence_score (0-100), key_findings (list), action_plan (list), risk_assessment (Low/Medium/High/Critical), equipment_status (object), follow_up (list)."""
-
-    user = f'Multi-Agent Synthesis:\n{json.dumps(synthesis,indent=2)}\n\nReturn final JSON recommendation.'
-    result = _extract_json(_call_claude(client, system, user, 1500))
-    return result if result else fallback
+def recommendation_agent(query: str, docs: List[Dict], retrieval: Dict, reliability: Dict, maintenance: Dict) -> Dict:
+    return _rule_recommendation(query, docs, retrieval, reliability, maintenance)
 
 
 # ─── Orchestrator ─────────────────────────────────────────────────────────────
 
 def run_multi_agent_pipeline(query: str, docs: List[Dict]) -> Dict[str, Any]:
-    client = _get_client()
-    mode = "Claude AI" if client is not None else "Rule-Based Analysis"
-    print(f"Multi-Agent Pipeline [{mode}]: {query[:60]}")
+    print(f"Multi-Agent Pipeline [Rule-Based]: {query[:60]}")
 
     print("  Agent 1: Equipment Retrieval...")
-    retrieval = equipment_retrieval_agent(query, docs, client)
+    retrieval = equipment_retrieval_agent(query, docs)
 
     print("  Agent 2: Reliability Analysis...")
-    reliability = reliability_analysis_agent(query, docs, retrieval, client)
+    reliability = reliability_analysis_agent(query, docs, retrieval)
 
     print("  Agent 3: Maintenance Planning...")
-    maint = maintenance_agent(query, docs, reliability, client)
+    maint = maintenance_agent(query, docs, reliability)
 
     print("  Agent 4: Final Recommendations...")
-    rec = recommendation_agent(query, docs, retrieval, reliability, maint, client)
+    rec = recommendation_agent(query, docs, retrieval, reliability, maint)
 
     return {
         "retrieval_analysis": retrieval,
         "reliability_analysis": reliability,
         "maintenance_plan": maint,
         "final_recommendation": rec,
-        "analysis_mode": mode,
+        "analysis_mode": "Rule-Based Analysis",
     }

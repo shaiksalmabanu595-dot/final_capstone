@@ -25,10 +25,6 @@ def _openai_key() -> Optional[str]:
     return key if key and key != "your-openai-key" else None
 
 
-def _claude_key() -> Optional[str]:
-    key = os.getenv("ANTHROPIC_API_KEY", "")
-    return key if key and key != "your-anthropic-key" else None
-
 
 # ─── Rule-based judge fallback ────────────────────────────────────────────────
 
@@ -176,7 +172,8 @@ def _llm_judge_openai(
 ) -> Dict[str, Any]:
     import openai
 
-    client = openai.OpenAI(api_key=_openai_key())
+    base_url = os.getenv("OPENAI_BASE_URL", "").strip() or None
+    client = openai.OpenAI(api_key=_openai_key(), base_url=base_url)
 
     # Build context summary from top docs
     context_lines = []
@@ -275,89 +272,6 @@ Return JSON:
     }
 
 
-# ─── Claude-based judge (fallback if no OpenAI but Claude available) ──────────
-
-def _llm_judge_claude(
-    query: str,
-    recommendation: Dict,
-    retrieved_docs: List[Dict],
-) -> Dict[str, Any]:
-    import anthropic
-
-    client = anthropic.Anthropic(api_key=_claude_key())
-
-    context_lines = []
-    for i, doc in enumerate(retrieved_docs[:5]):
-        context_lines.append(
-            f"Incident {i+1}: {doc.get('equipment_type','?')} | "
-            f"{doc.get('failure_type','No Failure')} | Severity: {doc.get('severity','?')}"
-        )
-    context_summary = "\n".join(context_lines) or "No incidents retrieved."
-
-    rec_text = (
-        f"Summary: {recommendation.get('summary','')[:300]}\n"
-        f"Root cause: {recommendation.get('root_cause','')[:150]}\n"
-        f"Risk: {recommendation.get('risk_assessment','')}\n"
-        f"Actions: {'; '.join(recommendation.get('action_plan',[])[:4])}"
-    )
-
-    prompt = f"""<query>{query}</query>
-<context>{context_summary}</context>
-<recommendation>{rec_text}</recommendation>
-
-You are an LLM judge evaluating a medical equipment maintenance recommendation.
-Score these four dimensions (0-25 each):
-1. clinical_safety (patient/staff safety)
-2. technical_accuracy (correct technical values)
-3. actionability (concrete, implementable)
-4. evidence_basis (grounded in retrieved incidents)
-
-Respond ONLY with this JSON:
-{{
-  "clinical_safety": {{"score": 0-25, "reasoning": "..."}},
-  "technical_accuracy": {{"score": 0-25, "reasoning": "..."}},
-  "actionability": {{"score": 0-25, "reasoning": "..."}},
-  "evidence_basis": {{"score": 0-25, "reasoning": "..."}},
-  "total_score": 0-100,
-  "verdict": "Excellent|Good|Adequate|Poor",
-  "approved": true|false,
-  "overall_reasoning": "..."
-}}"""
-
-    resp = client.messages.create(
-        model="claude-sonnet-4-6",
-        max_tokens=600,
-        messages=[{"role": "user", "content": prompt}],
-    )
-    text = resp.content[0].text.strip()
-
-    # Extract JSON from response
-    match = re.search(r'\{.*\}', text, re.DOTALL)
-    if match:
-        raw = json.loads(match.group())
-    else:
-        raise ValueError("No JSON in Claude response")
-
-    total = raw.get("total_score", 0)
-    return {
-        "total_score": int(total),
-        "verdict": raw.get("verdict", "Adequate"),
-        "dimension_scores": {
-            "clinical_safety":    {"score": raw.get("clinical_safety",    {}).get("score", 0), "max": 25,
-                                   "notes": [raw.get("clinical_safety",    {}).get("reasoning", "")]},
-            "technical_accuracy": {"score": raw.get("technical_accuracy", {}).get("score", 0), "max": 25,
-                                   "notes": [raw.get("technical_accuracy", {}).get("reasoning", "")]},
-            "actionability":      {"score": raw.get("actionability",      {}).get("score", 0), "max": 25,
-                                   "notes": [raw.get("actionability",      {}).get("reasoning", "")]},
-            "evidence_basis":     {"score": raw.get("evidence_basis",     {}).get("score", 0), "max": 25,
-                                   "notes": [raw.get("evidence_basis",     {}).get("reasoning", "")]},
-        },
-        "reasoning": raw.get("overall_reasoning", ""),
-        "approved": raw.get("approved", total >= 55),
-        "judge_mode": "claude-sonnet-4-6",
-    }
-
-
 # ─── Public API ───────────────────────────────────────────────────────────────
 
 def run_llm_judge(
@@ -365,24 +279,10 @@ def run_llm_judge(
     recommendation: Dict,
     retrieved_docs: List[Dict],
 ) -> Dict[str, Any]:
-    """
-    Run the LLM-as-judge evaluation on a maintenance recommendation.
-
-    Priority order:
-      1. GPT-4o mini  (if OPENAI_API_KEY set)
-      2. Claude       (if ANTHROPIC_API_KEY set)
-      3. Rule-based   (always available)
-    """
     if _openai_key():
         try:
             return _llm_judge_openai(query, recommendation, retrieved_docs)
         except Exception as e:
-            print(f"[llm_judge] OpenAI failed: {e}, trying Claude...")
-
-    if _claude_key():
-        try:
-            return _llm_judge_claude(query, recommendation, retrieved_docs)
-        except Exception as e:
-            print(f"[llm_judge] Claude failed: {e}, falling back to rule-based...")
+            print(f"[llm_judge] OpenAI failed: {e}, falling back to rule-based...")
 
     return _rule_judge(query, recommendation, retrieved_docs)

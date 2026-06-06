@@ -22,7 +22,8 @@ def _get_openai() -> Optional[object]:
         return None
     try:
         from openai import OpenAI
-        return OpenAI(api_key=key)
+        base_url = os.environ.get("OPENAI_BASE_URL", "").strip() or None
+        return OpenAI(api_key=key, base_url=base_url)
     except Exception:
         return None
 
