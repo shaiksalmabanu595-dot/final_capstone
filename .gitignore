@@ -17,3 +17,4 @@ backend/data/embeddings.npy
 # IDE
 .vscode/
 .idea/
+.env
