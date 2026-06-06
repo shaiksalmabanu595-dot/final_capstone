@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Node
+node_modules/
+frontend/dist/
+
+# Large binary cache files (regenerated on startup)
+backend/data/faiss_index.bin
+backend/data/bm25.pkl
+backend/data/documents.pkl
+backend/data/embeddings.npy
+
+# IDE
+.vscode/
+.idea/
