@@ -1,25 +1,28 @@
+"""
+RAG System — ChromaDB vector + ES-BM25 + RRF fusion + Cross-Encoder reranker
+"""
 import os
-import numpy as np
-import faiss
 import pickle
+import numpy as np
+import chromadb
 from typing import List, Dict, Any, Tuple
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, CrossEncoder
 from rank_bm25 import BM25Okapi
 import pandas as pd
 
-MODEL_NAME = "all-MiniLM-L6-v2"
-INDEX_PATH = os.path.join(os.path.dirname(__file__), "data", "faiss_index.bin")
-BM25_PATH  = os.path.join(os.path.dirname(__file__), "data", "bm25.pkl")
-DOCS_PATH  = os.path.join(os.path.dirname(__file__), "data", "documents.pkl")
-EMBS_PATH  = os.path.join(os.path.dirname(__file__), "data", "embeddings.npy")
+EMBED_MODEL   = "all-MiniLM-L6-v2"
+RERANK_MODEL  = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+CHROMA_PATH   = os.path.join(os.path.dirname(__file__), "data", "chroma_db")
+BM25_PATH     = os.path.join(os.path.dirname(__file__), "data", "bm25_es.pkl")
+DOCS_PATH     = os.path.join(os.path.dirname(__file__), "data", "documents.pkl")
+COLLECTION    = "medical_equipment"
 
-# Approximate tokens from word count (English technical text ≈ 0.75 words/token)
+
 def _approx_tokens(text: str) -> int:
     return max(1, int(len(text.split()) / 0.75))
 
 
 def record_to_text(row: Dict) -> str:
-    failure_info = ""
     if row.get("machine_failure") == 1:
         failure_info = (
             f"FAILURE DETECTED: {row.get('failure_type', 'Unknown')} "
@@ -47,19 +50,65 @@ def record_to_text(row: Dict) -> str:
     )
 
 
+# ── ES-BM25 (Okapi BM25 with Elasticsearch defaults: k1=1.2, b=0.75) ─────────
+
+class ESBM25:
+    """BM25 with Elasticsearch-compatible parameters."""
+
+    def __init__(self, tokenized_corpus: List[List[str]]):
+        self._bm25 = BM25Okapi(tokenized_corpus, k1=1.2, b=0.75)
+
+    def get_top_k(self, query_tokens: List[str], k: int) -> List[Tuple[int, float]]:
+        scores = self._bm25.get_scores(query_tokens)
+        top_idx = np.argsort(scores)[::-1][:k]
+        return [(int(i), float(scores[i])) for i in top_idx if scores[i] > 0]
+
+
+# ── RRF Fusion ────────────────────────────────────────────────────────────────
+
+def rrf_fusion(
+    ranked_lists: List[List[Tuple[int, float]]],
+    k: int = 60,
+) -> List[Tuple[int, float]]:
+    """
+    Reciprocal Rank Fusion.
+    score(d) = Σ  1 / (k + rank(d))   for each retriever
+    k=60 is the standard value from the original RRF paper.
+    """
+    scores: Dict[int, float] = {}
+    for ranked in ranked_lists:
+        for rank, (doc_id, _) in enumerate(ranked):
+            scores[doc_id] = scores.get(doc_id, 0.0) + 1.0 / (k + rank + 1)
+    return sorted(scores.items(), key=lambda x: x[1], reverse=True)
+
+
+# ── RAG System ────────────────────────────────────────────────────────────────
+
 class RAGSystem:
     def __init__(self):
         print("Loading embedding model...")
-        self.model = SentenceTransformer(MODEL_NAME)
-        self.index: faiss.Index = None
-        self.bm25: BM25Okapi = None
+        self.model = SentenceTransformer(EMBED_MODEL)
+
+        print("Loading cross-encoder reranker...")
+        try:
+            self.reranker = CrossEncoder(RERANK_MODEL, max_length=512)
+            self._reranker_ok = True
+        except Exception as e:
+            print(f"  Reranker unavailable ({e}), will use RRF scores directly.")
+            self.reranker = None
+            self._reranker_ok = False
+
+        self.chroma = chromadb.PersistentClient(path=CHROMA_PATH)
+        self.collection = None
+        self.bm25: ESBM25 = None
         self.documents: List[Dict] = []
         self.doc_texts: List[str] = []
-        self.embeddings: np.ndarray = None  # stored for reranking
         self.is_built = False
 
+    # ── Index building ─────────────────────────────────────────────────────────
+
     def build_index(self, df: pd.DataFrame, force_rebuild: bool = False):
-        os.makedirs(os.path.dirname(INDEX_PATH), exist_ok=True)
+        os.makedirs(CHROMA_PATH, exist_ok=True)
 
         if not force_rebuild and self._load_cached():
             print("Loaded RAG index from cache.")
@@ -69,164 +118,126 @@ class RAGSystem:
         self.documents = df.to_dict(orient="records")
         self.doc_texts = [record_to_text(row) for row in self.documents]
 
-        # Generate embeddings
-        print("Generating embeddings...")
-        embeddings = self.model.encode(self.doc_texts, show_progress_bar=True, batch_size=64)
-        embeddings = embeddings.astype(np.float32)
-        faiss.normalize_L2(embeddings)
-        self.embeddings = embeddings  # keep for reranking
+        # ── ChromaDB collection ────────────────────────────────────────────────
+        print("Building ChromaDB collection...")
+        try:
+            self.chroma.delete_collection(COLLECTION)
+        except Exception:
+            pass
 
-        # Build FAISS index
-        dim = embeddings.shape[1]
-        self.index = faiss.IndexFlatIP(dim)  # Inner product (cosine after normalization)
-        self.index.add(embeddings)
+        self.collection = self.chroma.create_collection(
+            name=COLLECTION,
+            metadata={"hnsw:space": "cosine"},
+        )
 
-        # Build BM25 index
-        tokenized = [text.lower().split() for text in self.doc_texts]
-        self.bm25 = BM25Okapi(tokenized)
+        print("Generating embeddings and adding to ChromaDB...")
+        embeddings = self.model.encode(
+            self.doc_texts, show_progress_bar=True, batch_size=64
+        ).astype(np.float32)
+
+        batch_size = 500
+        for i in range(0, len(self.doc_texts), batch_size):
+            end = i + batch_size
+            self.collection.add(
+                ids=[str(j) for j in range(i, min(end, len(self.doc_texts)))],
+                embeddings=embeddings[i:end].tolist(),
+                documents=self.doc_texts[i:end],
+            )
+
+        # ── ES-BM25 index ──────────────────────────────────────────────────────
+        print("Building ES-BM25 index (k1=1.2, b=0.75)...")
+        tokenized = [t.lower().split() for t in self.doc_texts]
+        self.bm25 = ESBM25(tokenized)
 
         self._save_cache()
         self.is_built = True
         print("RAG index built and cached.")
 
     def _save_cache(self):
-        faiss.write_index(self.index, INDEX_PATH)
-        np.save(EMBS_PATH, self.embeddings)
         with open(BM25_PATH, "wb") as f:
             pickle.dump(self.bm25, f)
         with open(DOCS_PATH, "wb") as f:
             pickle.dump((self.documents, self.doc_texts), f)
 
     def _load_cached(self) -> bool:
-        if os.path.exists(INDEX_PATH) and os.path.exists(BM25_PATH) and os.path.exists(DOCS_PATH):
+        try:
+            self.collection = self.chroma.get_collection(COLLECTION)
+            if self.collection.count() == 0:
+                return False
+        except Exception:
+            return False
+
+        if os.path.exists(BM25_PATH) and os.path.exists(DOCS_PATH):
             try:
-                self.index = faiss.read_index(INDEX_PATH)
                 with open(BM25_PATH, "rb") as f:
                     self.bm25 = pickle.load(f)
                 with open(DOCS_PATH, "rb") as f:
                     self.documents, self.doc_texts = pickle.load(f)
-                # Load stored embeddings if available (needed for reranking)
-                if os.path.exists(EMBS_PATH):
-                    self.embeddings = np.load(EMBS_PATH)
                 self.is_built = True
                 return True
             except Exception as e:
                 print(f"Cache load failed: {e}")
         return False
 
+    # ── Retrieval ──────────────────────────────────────────────────────────────
+
     def vector_search(self, query: str, k: int = 10) -> List[Tuple[int, float]]:
-        query_emb = self.model.encode([query]).astype(np.float32)
-        faiss.normalize_L2(query_emb)
-        scores, indices = self.index.search(query_emb, k)
-        return [(int(idx), float(score)) for idx, score in zip(indices[0], scores[0]) if idx >= 0]
+        """ChromaDB cosine-similarity search using our own embeddings."""
+        query_emb = self.model.encode([query]).astype(np.float32).tolist()
+        n = min(k, self.collection.count())
+        res = self.collection.query(query_embeddings=query_emb, n_results=n)
+        ids = res["ids"][0]
+        # ChromaDB cosine space returns distance = 1 - cos_sim  → sim = 1 - dist
+        dists = res["distances"][0]
+        return [(int(doc_id), round(1.0 - dist, 6)) for doc_id, dist in zip(ids, dists)]
 
     def bm25_search(self, query: str, k: int = 10) -> List[Tuple[int, float]]:
+        """ES-BM25 retrieval (k1=1.2, b=0.75)."""
         tokens = query.lower().split()
-        scores = self.bm25.get_scores(tokens)
-        top_indices = np.argsort(scores)[::-1][:k]
-        return [(int(idx), float(scores[idx])) for idx in top_indices if scores[idx] > 0]
+        return self.bm25.get_top_k(tokens, k)
 
-    # ── Embedding-based Reranking ─────────────────────────────────────────────
+    # ── Cross-Encoder Reranker ─────────────────────────────────────────────────
+
     def rerank(
         self,
         query: str,
         candidates: List[Tuple[int, float]],
         k: int,
-        query_terms: List[str] = None,
+        **_,
     ) -> List[Tuple[int, float]]:
-        """
-        Reranking using maintenance embeddings.
-
-        After hybrid retrieval, compute a fine-grained rerank score that combines:
-          1. Embedding cosine similarity (query_emb · doc_emb) — re-computed precisely
-          2. Metadata relevance bonus (equipment type / failure type keyword match)
-          3. Recency bonus (prefer more recent incidents)
-
-        This is the "maintenance embeddings reranking" step required by Req 2.
-        """
-        if self.embeddings is None or not candidates:
+        """Cross-encoder reranking using ms-marco-MiniLM-L-6-v2."""
+        if not candidates:
+            return []
+        if not self._reranker_ok:
             return candidates[:k]
 
-        # Encode query with normalization (same pipeline as index-time)
-        query_emb = self.model.encode([query]).astype(np.float32)[0]
-        query_emb /= np.linalg.norm(query_emb) + 1e-9
-
-        query_lower = query.lower()
-        terms = query_terms or query_lower.split()
-
-        reranked = []
-        for idx, initial_score in candidates:
-            doc = self.documents[idx]
-
-            # 1. Precise cosine similarity against stored embedding
-            doc_emb = self.embeddings[idx]
-            cosine_sim = float(np.dot(query_emb, doc_emb))
-
-            # 2. Metadata relevance: equipment type / failure type keyword match
-            meta_bonus = 0.0
-            eq_type = doc.get("equipment_type", "").lower()
-            fail_type = doc.get("failure_type", "").lower()
-            unit = doc.get("hospital_unit", "").lower()
-            severity = doc.get("severity", "").lower()
-
-            if any(t in eq_type or t in eq_type.replace(" ", "") for t in terms):
-                meta_bonus += 0.08
-            if any(t in fail_type for t in terms):
-                meta_bonus += 0.06
-            if any(t in unit for t in terms):
-                meta_bonus += 0.04
-            if doc.get("machine_failure") == 1:
-                if "fail" in query_lower or "break" in query_lower or "error" in query_lower:
-                    meta_bonus += 0.05
-            if severity in ("critical", "high") and (
-                "critical" in query_lower or "urgent" in query_lower or "emergency" in query_lower
-            ):
-                meta_bonus += 0.04
-
-            # 3. Recency bonus (tool wear as proxy for recent activity)
-            tool_wear = doc.get("tool_wear_min", 0)
-            recency_bonus = min(0.03, tool_wear / 10000.0)
-
-            # Final rerank score: weighted combination
-            final_score = 0.65 * cosine_sim + 0.25 * initial_score + meta_bonus + recency_bonus
-            reranked.append((idx, round(final_score, 6)))
-
+        pairs = [(query, self.doc_texts[idx]) for idx, _ in candidates]
+        scores = self.reranker.predict(pairs, show_progress_bar=False)
+        reranked = [(candidates[i][0], float(scores[i])) for i in range(len(candidates))]
         return sorted(reranked, key=lambda x: x[1], reverse=True)[:k]
 
-    # ── Hybrid Search ─────────────────────────────────────────────────────────
+    # ── Hybrid Search (ChromaDB + ES-BM25 + RRF + Cross-Encoder) ──────────────
+
     def hybrid_search(
         self,
         query: str,
         k: int = 5,
-        alpha: float = 0.6,
+        alpha: float = 0.6,        # kept for API compatibility; RRF is now used
         filters: Dict[str, Any] = None,
         use_reranking: bool = True,
     ) -> List[Dict]:
-        # Phase 1: Retrieve candidates (wider pool for reranking)
         candidate_k = k * 6
+
+        # Phase 1: Dual retrieval
         vector_results = self.vector_search(query, k=candidate_k)
-        bm25_results = self.bm25_search(query, k=candidate_k)
+        bm25_results   = self.bm25_search(query,   k=candidate_k)
 
-        # Phase 2: Normalize and combine (RRF-style normalization)
-        def normalize(results):
-            if not results:
-                return {}
-            max_score = max(s for _, s in results) or 1.0
-            return {idx: s / max_score for idx, s in results}
+        # Phase 2: RRF fusion (replaces alpha-weighted linear combination)
+        ranked = rrf_fusion([vector_results, bm25_results])
 
-        v_scores = normalize(vector_results)
-        b_scores = normalize(bm25_results)
-
-        all_indices = set(v_scores) | set(b_scores)
-        combined = {
-            idx: alpha * v_scores.get(idx, 0.0) + (1 - alpha) * b_scores.get(idx, 0.0)
-            for idx in all_indices
-        }
-        ranked = sorted(combined.items(), key=lambda x: x[1], reverse=True)
-
-        # Phase 3: Embedding-based reranking on top candidates
-        if use_reranking and self.embeddings is not None:
-            top_candidates = ranked[: k * 4]  # rerank a wider pool
+        # Phase 3: Cross-encoder reranking on top candidate pool
+        if use_reranking and self._reranker_ok:
+            top_candidates = ranked[: k * 4]
             ranked = self.rerank(query, top_candidates, k=k * 4)
 
         # Phase 4: Metadata filtering + final selection
@@ -234,7 +245,7 @@ class RAGSystem:
         for idx, score in ranked:
             doc = self.documents[idx].copy()
             doc["relevance_score"] = round(score, 4)
-            doc["document_text"] = self.doc_texts[idx]
+            doc["document_text"]   = self.doc_texts[idx]
 
             if filters:
                 if filters.get("equipment_type"):
@@ -256,40 +267,37 @@ class RAGSystem:
 
         return results
 
-    # ── Token-aware context builder ───────────────────────────────────────────
+    # ── Token-aware context builder ────────────────────────────────────────────
+
     def get_context_for_llm(
         self,
         retrieved_docs: List[Dict],
         max_tokens: int = 1200,
     ) -> Tuple[str, Dict]:
-        """
-        Build LLM context string from retrieved docs.
-        Respects a token budget (approx tokens, not chars).
-        Returns (context_string, token_usage_info).
-        """
         context_parts = []
-        total_tokens = 0
-        skipped = 0
+        total_tokens  = 0
+        skipped       = 0
         for i, doc in enumerate(retrieved_docs):
-            text = f"[Incident {i+1}] {doc['document_text']}"
-            est_tokens = _approx_tokens(text)
-            if total_tokens + est_tokens > max_tokens:
+            text      = f"[Incident {i+1}] {doc['document_text']}"
+            est_toks  = _approx_tokens(text)
+            if total_tokens + est_toks > max_tokens:
                 skipped += 1
                 continue
             context_parts.append(text)
-            total_tokens += est_tokens
+            total_tokens += est_toks
 
         token_info = {
-            "included_docs": len(context_parts),
-            "skipped_docs": skipped,
+            "included_docs":    len(context_parts),
+            "skipped_docs":     skipped,
             "estimated_tokens": total_tokens,
-            "token_budget": max_tokens,
-            "utilization_pct": round(total_tokens / max_tokens * 100, 1),
+            "token_budget":     max_tokens,
+            "utilization_pct":  round(total_tokens / max_tokens * 100, 1),
         }
         return "\n\n".join(context_parts), token_info
 
 
-# Singleton
+# ── Singleton ─────────────────────────────────────────────────────────────────
+
 _rag_instance: RAGSystem = None
 
 
