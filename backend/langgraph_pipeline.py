@@ -25,7 +25,6 @@ from agents import (
     reliability_analysis_agent,
     maintenance_agent,
     recommendation_agent,
-    _get_client,
 )
 from rag_system import get_rag_system
 
@@ -162,9 +161,8 @@ def node_rag_retrieval(state: MedEquipState) -> MedEquipState:
 # ─── Node: Equipment Retrieval Agent ─────────────────────────────────────────
 def node_retrieval_agent(state: MedEquipState) -> MedEquipState:
     t0 = time.time()
-    client = _get_client()
     query = state.get("refined_query") or state["query"]
-    result = equipment_retrieval_agent(query, state.get("retrieved_docs", []), client)
+    result = equipment_retrieval_agent(query, state.get("retrieved_docs", []))
 
     timings = dict(state.get("node_timings", {}))
     timings["retrieval_agent"] = _time_ms(t0)
@@ -181,13 +179,11 @@ def node_retrieval_agent(state: MedEquipState) -> MedEquipState:
 # ─── Node: Reliability Analysis Agent ────────────────────────────────────────
 def node_reliability_agent(state: MedEquipState) -> MedEquipState:
     t0 = time.time()
-    client = _get_client()
     query = state.get("refined_query") or state["query"]
     result = reliability_analysis_agent(
         query,
         state.get("retrieved_docs", []),
         state.get("retrieval_result", {}),
-        client,
     )
 
     timings = dict(state.get("node_timings", {}))
@@ -204,13 +200,11 @@ def node_reliability_agent(state: MedEquipState) -> MedEquipState:
 # ─── Node: Maintenance Agent ──────────────────────────────────────────────────
 def node_maintenance_agent(state: MedEquipState) -> MedEquipState:
     t0 = time.time()
-    client = _get_client()
     query = state.get("refined_query") or state["query"]
     result = maintenance_agent(
         query,
         state.get("retrieved_docs", []),
         state.get("reliability_result", {}),
-        client,
     )
 
     timings = dict(state.get("node_timings", {}))
@@ -228,7 +222,6 @@ def node_maintenance_agent(state: MedEquipState) -> MedEquipState:
 # ─── Node: Recommendation Agent ──────────────────────────────────────────────
 def node_recommendation_agent(state: MedEquipState) -> MedEquipState:
     t0 = time.time()
-    client = _get_client()
     query = state.get("refined_query") or state["query"]
     result = recommendation_agent(
         query,
@@ -236,7 +229,6 @@ def node_recommendation_agent(state: MedEquipState) -> MedEquipState:
         state.get("retrieval_result", {}),
         state.get("reliability_result", {}),
         state.get("maintenance_result", {}),
-        client,
     )
 
     timings = dict(state.get("node_timings", {}))

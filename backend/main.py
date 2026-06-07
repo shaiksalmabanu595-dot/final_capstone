@@ -147,12 +147,10 @@ def _validate_query(query: str) -> str:
 # ─── Endpoints ────────────────────────────────────────────────────────────────
 @app.get("/api/health")
 async def health_check():
-    from agents import _api_key_available as _claude_available
     return {
         "status": "healthy",
         "dataset_records": len(df) if df is not None else 0,
         "rag_ready": rag is not None and rag.is_built,
-        "claude_api": _claude_available(),
         "openai_api": bool(_openai_key()),
         "pipeline": "LangGraph + GPT-4o mini Guardrails",
     }
@@ -235,16 +233,15 @@ async def validate_query(request: GuardrailRequest):
 @app.get("/api/pipeline/schema")
 async def get_pipeline_schema():
     """Return LangGraph pipeline topology for frontend visualization."""
-    from agents import _api_key_available as _claude_avail
     return {
         "schema": GRAPH_SCHEMA,
         "runtime_info": {
             "openai_guardrails": bool(_openai_key()),
-            "claude_agents": _claude_avail(),
-            "rag_mode": "Hybrid (FAISS + BM25)",
+            "rag_mode": "Hybrid (ChromaDB + ES-BM25 + RRF)",
             "embedding_model": "all-MiniLM-L6-v2",
+            "reranker_model": "cross-encoder/ms-marco-MiniLM-L-6-v2",
             "guardrail_model": "gpt-4o-mini" if _openai_key() else "rule_based",
-            "agent_model": "claude-sonnet-4-6" if _claude_avail() else "rule_based",
+            "agent_model": "rule_based",
         },
     }
 
