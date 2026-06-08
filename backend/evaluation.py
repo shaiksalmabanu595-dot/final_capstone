@@ -12,8 +12,10 @@ Falls back to rule-based implementations when LLM APIs are unavailable (no API k
 Also provides an LLM-as-judge evaluation independent of DeepEval.
 """
 
+import asyncio
 import os
 import re
+import threading
 from typing import List, Dict, Any, Optional
 
 # ─── DeepEval imports (graceful fallback) ────────────────────────────────────
@@ -134,41 +136,60 @@ def _run_deepeval_metrics(
     contexts: List[str],
     expected_output: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Run DeepEval metrics with GPT-4o mini as judge."""
-    test_case = LLMTestCase(
-        input=query,
-        actual_output=answer,
-        retrieval_context=contexts,
-        expected_output=expected_output or answer,
-    )
+    """
+    Run DeepEval metrics in a dedicated thread with its own event loop.
+    This avoids the uvloop conflict: DeepEval uses nest_asyncio which
+    cannot patch uvloop (used by uvicorn).
+    """
+    result_holder: Dict = {}
 
-    metrics = {
-        "answer_relevancy": AnswerRelevancyMetric(threshold=0.6, verbose_mode=False),
-        "faithfulness":     FaithfulnessMetric(threshold=0.6, verbose_mode=False),
-        "contextual_precision": ContextualPrecisionMetric(threshold=0.5, verbose_mode=False),
-        "contextual_recall":    ContextualRecallMetric(threshold=0.5, verbose_mode=False),
-    }
-
-    results = {}
-    for name, metric in metrics.items():
+    def _worker():
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
-            metric.measure(test_case)
-            results[name] = {
-                "score": round(metric.score, 3),
-                "reason": metric.reason or "",
-                "passed": metric.passed,
-                "threshold": metric.threshold,
-                "mode": "deepeval_llm",
+            test_case = LLMTestCase(
+                input=query,
+                actual_output=answer,
+                retrieval_context=contexts,
+                expected_output=expected_output or answer,
+            )
+            metrics = {
+                "answer_relevancy":     AnswerRelevancyMetric(threshold=0.6, verbose_mode=False),
+                "faithfulness":         FaithfulnessMetric(threshold=0.6, verbose_mode=False),
+                "contextual_precision": ContextualPrecisionMetric(threshold=0.5, verbose_mode=False),
+                "contextual_recall":    ContextualRecallMetric(threshold=0.5, verbose_mode=False),
             }
-        except Exception as e:
-            results[name] = {
-                "score": 0.0,
-                "reason": f"DeepEval metric error: {e}",
-                "passed": False,
-                "mode": "error",
-            }
+            out = {}
+            for name, metric in metrics.items():
+                try:
+                    metric.measure(test_case)
+                    out[name] = {
+                        "score":     round(metric.score, 3),
+                        "reason":    metric.reason or "",
+                        "passed":    metric.passed,
+                        "threshold": metric.threshold,
+                        "mode":      "deepeval_llm",
+                    }
+                except Exception as e:
+                    out[name] = {
+                        "score":  0.0,
+                        "reason": f"Metric error: {e}",
+                        "passed": False,
+                        "mode":   "error",
+                    }
+            result_holder["data"] = out
+        finally:
+            loop.close()
 
-    return results
+    t = threading.Thread(target=_worker, daemon=True)
+    t.start()
+    t.join(timeout=120)
+
+    if "data" not in result_holder:
+        return {name: {"score": 0.0, "reason": "Timeout or thread error", "passed": False, "mode": "error"}
+                for name in ["answer_relevancy", "faithfulness", "contextual_precision", "contextual_recall"]}
+
+    return result_holder["data"]
 
 
 # ─── Public evaluation API ────────────────────────────────────────────────────
@@ -205,22 +226,29 @@ def evaluate_recommendation(
             "mode": "skipped",
         }
 
-    # Choose evaluation backend
+    # Choose evaluation backend — try DeepEval LLM first, fall back to rule-based
     mode = "deepeval_llm" if (DEEPEVAL_AVAILABLE and _openai_key()) else "rule_based"
+    metrics = {}
 
     if mode == "deepeval_llm":
         try:
             metrics = _run_deepeval_metrics(query, answer, contexts)
-        except Exception as e:
+            # If all metrics errored (e.g. gateway 404), fall back to rule-based
+            all_errored = all(m.get("mode") == "error" for m in metrics.values())
+            if all_errored:
+                mode = "rule_based"
+                metrics = {}
+        except Exception:
             mode = "rule_based"
             metrics = {}
 
-    if mode == "rule_based":
+    if mode == "rule_based" or not metrics:
+        mode = "rule_based"
         metrics = {
-            "answer_relevancy": {**_rule_answer_relevancy(query, answer), "threshold": 0.5, "mode": "rule_based"},
-            "faithfulness":     {**_rule_faithfulness(contexts, answer),   "threshold": 0.5, "mode": "rule_based"},
-            "contextual_precision": {**_rule_contextual_precision(query, contexts), "threshold": 0.4, "mode": "rule_based"},
-            "contextual_recall":    {**_rule_contextual_recall(contexts, answer),   "threshold": 0.5, "mode": "rule_based"},
+            "answer_relevancy":     {**_rule_answer_relevancy(query, answer),          "threshold": 0.5, "mode": "rule_based"},
+            "faithfulness":         {**_rule_faithfulness(contexts, answer),            "threshold": 0.5, "mode": "rule_based"},
+            "contextual_precision": {**_rule_contextual_precision(query, contexts),     "threshold": 0.4, "mode": "rule_based"},
+            "contextual_recall":    {**_rule_contextual_recall(contexts, answer),       "threshold": 0.5, "mode": "rule_based"},
         }
 
     # Overall score = average of passed metric scores
