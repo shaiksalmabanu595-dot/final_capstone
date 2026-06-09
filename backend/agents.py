@@ -145,7 +145,13 @@ def _rule_recommendation(query: str, docs: List[Dict], retrieval: Dict, reliabil
     failures = [d for d in docs if d.get("machine_failure") == 1]
 
     risk_level = "Critical" if failure_rate > 30 else "High" if failure_rate > 15 else "Medium" if failure_rate > 5 else "Low"
-    confidence = min(95, 60 + len(docs) * 3 + len(failures) * 2)
+
+    if len(docs) == 0:
+        confidence = 0
+    elif len(failures) == 0:
+        confidence = min(50, len(docs) * 4)
+    else:
+        confidence = min(95, 40 + len(docs) * 3 + len(failures) * 4)
 
     equipment_types = retrieval.get("equipment_focus", [])
     units = retrieval.get("hospital_units_affected", [])
